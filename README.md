@@ -16,7 +16,7 @@ pip install dominate
 ### Testing
 - Download the latest G net from this [link](https://drive.google.com/open?id=1vzqNnjM0dkIsdU-PRlKp2QdH7M6sRLMK): 
 *In case you want a latest net G without the texture images check this [link](https://drive.google.com/open?id=1oej1K6faS9tHIbNT5xkKk_TdDDH5xAlI)* 
-**ATTENTION** THESE MODEL IS CURRENTLY TRAINED ON THE **MVC** DATASET AND NOT ON THE VIDEO POSES DATASET. SO RESULTS COULD BE MUCH BETTER.
+**ATTENTION** THESE MODELS ARE CURRENTLY TRAINED ON THE **MVC** DATASET AND NOT ON THE VIDEO POSES DATASET. SO RESULTS COULD BE MUCH BETTER.
 - Save the model into ./checkpoints/posedata/
 - Download the test [dataset](https://drive.google.com/open?id=1DZ-97iBuDj5fGkGOfMGsJS73P10MyvV0): 
 - Save dataset to  ./datasets/
