@@ -38,7 +38,7 @@ python train.py --name posedata --dataroot ./datasets/MVC_pix2pix --label_nc 0 -
 ```
 - If you want to train the code without texture you need to change it to this:
 ```bash
-python train.py --name posedata --dataroot ./datasets/MVC_pix2pix --label_nc 0 --no_instance --nThreads 1 --data_type 8 --loadSize 256 --multinput source dp_target dp_source --input_nc 9 --resize_or_crop resize_and_crop 
+python train.py --name posedata --dataroot ./datasets/MVC_pix2pix --label_nc 0 --no_instance --nThreads 1 --data_type 8 --loadSize 256 --multinput source dp_target dp_source --input_nc 9 --resize_or_crop resize_and_crop --batchSize 8
 ```
 - To view training results, please checkout intermediate results in `./checkpoints/posedata/web/index.html`.
 If you have tensorflow installed, you can see tensorboard logs in `./checkpoints/posedata/logs` by adding `--tf_log` to the training scripts.
