@@ -7,6 +7,7 @@
 import torch.utils.data as data
 from PIL import Image
 import os
+import re
 
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
@@ -17,6 +18,14 @@ IMG_EXTENSIONS = [
 def is_image_file(filename):
     return any(filename.endswith(extension) for extension in IMG_EXTENSIONS)
 
+
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+
+def natural_keys(text):
+    return [ atoi(c) for c in re.split('(\d+)',text) ]
 
 def make_dataset(dir):
     images = []

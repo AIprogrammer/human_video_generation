@@ -4,8 +4,8 @@ from data.base_data_loader import BaseDataLoader
 
 def CreateDataset(opt):
     dataset = None
-    from data.aligned_dataset import AlignedDataset
-    dataset = AlignedDataset()
+    from data.videos_dataset import Videos_Dataset
+    dataset = Videos_Dataset()
 
     print("dataset [%s] was created" % (dataset.name()))
     dataset.initialize(opt)
