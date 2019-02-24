@@ -41,27 +41,27 @@ for i, data in enumerate(dataset):
     with torch.no_grad():
         if i >= opt.how_many:
             break
-        if opt.data_type == 16:
-            data['label'] = data['label'].half()
-            data['inst']  = data['inst'].half()
-        elif opt.data_type == 8:
-            data['label'] = data['label'].uint8()
-            data['inst']  = data['inst'].uint8()
-        if opt.export_onnx:
-            print ("Exporting to ONNX: ", opt.export_onnx)
-            assert opt.export_onnx.endswith("onnx"), "Export model file should end with .onnx"
-            torch.onnx.export(model, [data['label'], data['inst']],
-                              opt.export_onnx, verbose=True)
-            exit(0)
-        minibatch = 1
-        if opt.engine:
-            generated = run_trt_engine(opt.engine, minibatch, [data['label'], data['inst']])
-        elif opt.onnx:
-            generated = run_onnx(opt.onnx, opt.data_type, minibatch, [data['label'], data['inst']])
-        else:
-            generated = model.inference(data['label'], data['inst'])
+        data["dp_target"] = data["dp_target"].permute(1, 0, 2, 3, 4)
+        data["target"] = data["target"].permute(1, 0, 2, 3, 4)
+        data["texture"] = data["texture"].permute(1, 0, 2, 3, 4)
 
-        visuals = OrderedDict([('input_label', util.tensor2label(data['label'][0], opt.label_nc)),
+        generated_video = []
+        real_video = []
+
+        for i in range(0, data["dp_target"].shape[0]):
+
+            label_tensors = []
+            for folder in opt.multinput:
+                if data[folder].dim() == 5:
+                    label_tensors.append(data[folder][i].squeeze())
+                else:
+                    label_tensors.append(data[folder])
+
+            label = torch.cat(label_tensors, dim=1)
+
+            generated = model.inference(label, None)
+
+        visuals = OrderedDict([('input_label', util.tensor2im(label[0])),
                                ('synthesized_image', util.tensor2im(generated.data[0]))])
         img_path = data['path']
         print('process image... %s' % img_path)

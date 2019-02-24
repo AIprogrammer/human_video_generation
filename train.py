@@ -55,11 +55,8 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         data["texture"] = data["texture"].permute(1, 0, 2, 3, 4)
 
         iter_start_time = time.time()
-        total_steps += opt.batchSize
         epoch_iter += opt.batchSize
 
-        # whether to collect output images
-        save_fake = total_steps % opt.display_freq == display_delta
 
         generated_video = []
         real_video = []
@@ -74,7 +71,8 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             label = torch.cat(label_tensors, dim = 1)
             image = data["target"][i].squeeze()
-
+            total_steps += opt.batchSize
+            save_fake = total_steps % opt.display_freq == display_delta
 
             ############## Forward Pass ######################
             losses, generated = model(Variable(label), None, Variable(image), None, infer=save_fake)
@@ -104,9 +102,12 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             ### display output images
             if save_fake:
-                visuals = OrderedDict([('input_label', util.tensor2im(data['source'][0])),
+                visuals = OrderedDict([('input_label', util.tensor2im(data['source'].data[0])),
+                                       ('texture', util.tensor2im(data['dp_source'].data[0])),
+                                       ('texture', util.tensor2im(data['texture'][i].data[0])),
+                                       ('dp_target', util.tensor2im(data['dp_target'][i].data[0])),
                                        ('synthesized_video', util.tensor2im(generated.data[0])),
-                                       ('real_video', util.tensor2im(data['image'][0]))])
+                                       ('real_video', util.tensor2im(image.data[0]))])
                 visualizer.display_current_results(visuals, epoch, total_steps)
 
             ### save latest model

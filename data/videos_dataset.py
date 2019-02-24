@@ -39,19 +39,18 @@ class Videos_Dataset(BaseDataset):
         texture_video = []
         current_paths = self.input_paths[index]
 
+        transform_img = get_transform(self.opt, {})
         for dp_target_path in current_paths['dp_target']:
             img = Image.open(dp_target_path)
-            params = get_params(self.opt, img.size)
-            transform_img = get_transform(self.opt, params)
             img_tensor = transform_img(img.convert('RGB'))
             dp_target_video.append(img_tensor)
 
+
         for target_path in current_paths['target']:
             img = Image.open(target_path)
-            params = get_params(self.opt, img.size)
-            transform_img = get_transform(self.opt, params)
             img_tensor = transform_img(img.convert('RGB'))
             target_video.append(img_tensor)
+
 
         for texture_path in current_paths['texture']:
             img = Image.open(texture_path)
@@ -66,13 +65,9 @@ class Videos_Dataset(BaseDataset):
         texture = torch.stack(texture_video, 0)
 
         dp_source = Image.open(current_paths['dp_source'])
-        params = get_params(self.opt, dp_source.size)
-        transform_img = get_transform(self.opt, params)
         dp_source_tensor = transform_img(dp_source.convert('RGB'))
 
         source = Image.open(current_paths['source'])
-        params = get_params(self.opt, source.size)
-        transform_img = get_transform(self.opt, params)
         source_tensor = transform_img(source.convert('RGB'))
 
         input_dict = {'dp_target': dp_target, 'target': target, 'texture': texture,
