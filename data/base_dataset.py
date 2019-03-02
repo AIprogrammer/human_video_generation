@@ -32,6 +32,20 @@ def get_params(opt, size):
     flip = random.random() > 0.5
     return {'crop_pos': (x, y), 'flip': flip}
 
+def get_optical_flow_transform(size):
+    h, w = size
+
+    t_X = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((w/2.0 - 0.5,), (w/2.0 - 0.5,)), ])
+
+    t_Y = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((h/2.0 - 0.5,), (h/2.0 - 0.5,)),
+    ])
+
+    return t_X, t_Y
+
 def get_transform(opt, params, method=Image.BICUBIC, normalize=True):
     transform_list = []
     if 'resize' in opt.resize_or_crop:

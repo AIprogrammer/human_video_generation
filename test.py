@@ -53,20 +53,23 @@ for i, data in enumerate(dataset):
             label_tensors = []
             for folder in opt.multinput:
                 if data[folder].dim() == 5:
-                    label_tensors.append(data[folder][i].squeeze())
+                    label_tensors.append(data[folder][i])
                 else:
                     label_tensors.append(data[folder])
+
+            for lt in label_tensors:
+                print lt.size()
 
             label = torch.cat(label_tensors, dim=1)
 
             generated = model.inference(label, None)
+            print generated.size()
 
-        visuals = OrderedDict([('input_label', util.tensor2im(label[0])),
-                               ('synthesized_image', util.tensor2im(generated.data[0]))])
-        img_path = data['path']
-        print('process image... %s' % img_path)
-        visualizer.save_images(webpage, visuals, img_path[0])
-        visualizer.display_current_results(visuals, 100, 12345)
+            visuals = OrderedDict([('synthesized_image', util.tensor2im(generated.data[0]))])
+            img_path = data['path'][i]
+            print('process image... %s' % img_path)
+            visualizer.save_images(webpage, visuals, img_path[0].rsplit("/",1)[0] + str(i))
+            visualizer.display_current_results(visuals, 100, 12345)
 
 
 webpage.save()

@@ -50,71 +50,50 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         epoch_iter = epoch_iter % dataset_size
 
     for i, data in enumerate(dataset, start=epoch_iter):
-        data["dp_target"] = data["dp_target"].permute(1, 0, 2, 3, 4)
-        data["target"] = data["target"].permute(1, 0, 2, 3, 4)
-        data["texture"] = data["texture"].permute(1, 0, 2, 3, 4)
 
         iter_start_time = time.time()
         epoch_iter += opt.batchSize
+        total_steps += opt.batchSize
+        # whether to collect output images
+        save_fake = total_steps % opt.display_freq == display_delta
 
 
-        generated_video = []
-        real_video = []
+        ############## Forward Pass ######################
+        losses, generated = model(Variable(data['input']), None, Variable(data['target']), None, infer=save_fake)
 
-        for i in range(0, data["dp_target"].shape[0]):
-            label_tensors = []
-            for folder in opt.multinput:
-                if data[folder].dim() == 5:
-                    label_tensors.append(data[folder][i].squeeze())
-                else:
-                    label_tensors.append(data[folder])
+        # sum per device losses
+        losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
+        loss_dict = dict(zip(model.module.loss_names, losses))
 
-            label = torch.cat(label_tensors, dim = 1)
-            image = data["target"][i].squeeze()
-            total_steps += opt.batchSize
-            save_fake = total_steps % opt.display_freq == display_delta
+        # calculate final loss scalar
+        loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
+        loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
 
-            ############## Forward Pass ######################
-            losses, generated = model(Variable(label), None, Variable(image), None, infer=save_fake)
+        ############### Backward Pass ####################
+        # update generator weights
+        model.module.optimizer_G.zero_grad()
+        loss_G.backward()
+        model.module.optimizer_G.step()
 
-            # sum per device losses
-            losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
-            loss_dict = dict(zip(model.module.loss_names, losses))
+        # update discriminator weights
+        model.module.optimizer_D.zero_grad()
+        loss_D.backward()
+        model.module.optimizer_D.step()
 
-            # calculate final loss scalar
-            loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
-            loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
+        ### display output images
+        if save_fake:
+            visuals = OrderedDict([('synthesized_video', util.tensor2im(generated.data[0])),
+                                   ('real_video', util.tensor2im(data['target'][0]))])
+            visualizer.display_current_results(visuals, epoch, total_steps)
 
-            ############### Backward Pass ####################
-            # update generator weights
-            model.module.optimizer_G.zero_grad()
-            loss_G.backward()
-            model.module.optimizer_G.step()
+        ### save latest model
+        #if total_steps % opt.save_latest_freq == save_delta:
 
-            # update discriminator weights
-            model.module.optimizer_D.zero_grad()
-            loss_D.backward()
-            model.module.optimizer_D.step()
-
-            if save_fake:
-                generated_video.append(util.tensor2im(generated.data[0]))
-                real_video.append(util.tensor2im(image.data[0]))
-
-            ### display output images
-            if save_fake:
-                visuals = OrderedDict([('input_label', util.tensor2im(data['source'].data[0])),
-                                       ('texture', util.tensor2im(data['dp_source'].data[0])),
-                                       ('texture', util.tensor2im(data['texture'][i].data[0])),
-                                       ('dp_target', util.tensor2im(data['dp_target'][i].data[0])),
-                                       ('synthesized_video', util.tensor2im(generated.data[0])),
-                                       ('real_video', util.tensor2im(image.data[0]))])
-                visualizer.display_current_results(visuals, epoch, total_steps)
-
-            ### save latest model
-            if total_steps % opt.save_latest_freq == save_delta:
-                print('saving the latest model (epoch %d, total_steps %d)' % (epoch, total_steps))
-                model.module.save('latest')
-                np.savetxt(iter_path, (epoch, epoch_iter), delimiter=',', fmt='%d')
+        print('saving the latest model (epoch %d, total_steps %d)' % (epoch, total_steps))
+        model.module.save('latest')
+        np.savetxt(iter_path, (epoch, epoch_iter), delimiter=',', fmt='%d')
+        for key, value in (data['paths']).iteritems():
+            print key + "      " + value[0]
 
         if epoch_iter >= dataset_size:
             break
