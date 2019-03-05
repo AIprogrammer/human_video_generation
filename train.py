@@ -57,9 +57,9 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
 
-
         ############## Forward Pass ######################
-        losses, generated = model(Variable(data['input']), None, Variable(data['target']), None, infer=save_fake)
+        losses, generated = model(Variable(data['input']), Variable(data['target']), Variable(data['previous_frame']),
+                                  Variable(data['grid']), infer=save_fake)
 
         # sum per device losses
         losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
@@ -87,13 +87,12 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             visualizer.display_current_results(visuals, epoch, total_steps)
 
         ### save latest model
-        #if total_steps % opt.save_latest_freq == save_delta:
-
-        print('saving the latest model (epoch %d, total_steps %d)' % (epoch, total_steps))
-        model.module.save('latest')
-        np.savetxt(iter_path, (epoch, epoch_iter), delimiter=',', fmt='%d')
-        for key, value in (data['paths']).iteritems():
-            print key + "      " + value[0]
+        if total_steps % opt.save_latest_freq == save_delta:
+            print('saving the latest model (epoch %d, total_steps %d)' % (epoch, total_steps))
+            model.module.save('latest')
+            np.savetxt(iter_path, (epoch, epoch_iter), delimiter=',', fmt='%d')
+            for key, value in (data['paths']).iteritems():
+                print key + "      " + value[0]
 
         if epoch_iter >= dataset_size:
             break

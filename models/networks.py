@@ -3,6 +3,7 @@
 import torch
 import torch.nn as nn
 import functools
+from torch.nn.functional import grid_sample
 from torch.autograd import Variable
 import numpy as np
 
@@ -189,16 +190,36 @@ class GlobalGenerator(nn.Module):
         super(GlobalGenerator, self).__init__()        
         activation = nn.ReLU(True)        
 
-        model = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
+        model_downsample = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
         ### downsample
         for i in range(n_downsampling):
             mult = 2**i
-            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1),
+            model_downsample += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1),
                       norm_layer(ngf * mult * 2), activation]
+        self.model_downsample = nn.Sequential(*model_downsample)
+
+        model_downsample_previous = [nn.ReflectionPad2d(3), nn.Conv2d(3, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
+        ### downsample_previous
+        for i in range(n_downsampling):
+            mult = 2**i
+            model_downsample_previous += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1),
+                      norm_layer(ngf * mult * 2), activation]
+        self.model_downsample_previous = nn.Sequential(*model_downsample_previous)
+
+        model_downsample_grid = [nn.ReflectionPad2d(3), nn.Conv2d(2, 2, kernel_size=7, padding=0), norm_layer(ngf), activation]
+        ### downsample_grid
+        for i in range(n_downsampling):
+            mult = 2**i
+            model_downsample_grid += [nn.Conv2d(2, 2, kernel_size=3, stride=2, padding=1),
+                      norm_layer(2), activation]
+        self.model_downsample_grid = nn.Sequential(*model_downsample_grid)
+
+        self.down_pair = nn.Conv2d(512, 256, kernel_size=1)
 
         ### resnet blocks
         mult = 2**n_downsampling
-        for i in range(n_blocks):
+        model = [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
+        for i in range(1, n_blocks):
             model += [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
         
         ### upsample         
@@ -209,8 +230,14 @@ class GlobalGenerator(nn.Module):
         model += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]        
         self.model = nn.Sequential(*model)
             
-    def forward(self, input):
-        return self.model(input)             
+    def forward(self, input, prev_fram, grid):
+        model_downsample_output = self.model_downsample(input)
+        prev_frame_output = self.model_downsample_previous(prev_fram)
+        grid_output = self.model_downsample_grid(grid).permute(0, 2, 3, 1)
+        warped = grid_sample(prev_frame_output, grid_output, padding_mode='reflection')
+        output = torch.cat((model_downsample_output, warped), 1)
+        output = self.down_pair(output)
+        return self.model(output)
         
 # Define a resnet block
 class ResnetBlock(nn.Module):

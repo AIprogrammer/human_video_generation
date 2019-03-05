@@ -36,15 +36,17 @@ class Videos_Dataset(BaseDataset):
                 texture = (make_dataset(os.path.join(current_path, "texture%d"%i)))
                 texture.sort(key=natural_keys)
                 self.input_paths.append({'dp_target': dp_target_folders[0], 'target':  target_folders[0],
-                                         'dp_source': dp_source_folders[i], 'source': source_folders[i],
-                                         'texture': texture[0], 'previous_frame': source_folders[0],
+                                         'texture': texture[0],
+                                         'previous_frame': source_folders[i],
                                          'of_x': of_x_source[i], 'of_y': of_y_source[i]})
-                for j in range(1, len(target_folders)):
-                    self.input_paths.append({'dp_target': dp_target_folders[j], 'target': target_folders[j],
-                                             'dp_source': dp_source_folders[i], 'source': source_folders[i],
-                                             'texture': texture[j], 'previous_frame': target_folders[j-1],
-                                             'of_x': of_x[j-1], 'of_y': of_y[j-1]})
-                    self.dataset_size += 1
+                self.dataset_size += 1
+                print folder, i
+            for j in range(1, len(target_folders)):
+                self.input_paths.append({'dp_target': dp_target_folders[j], 'target': target_folders[j],
+                                         'texture': texture[j],
+                                         'previous_frame': target_folders[j-1],
+                                         'of_x': of_x[j-1], 'of_y': of_y[j-1]})
+                self.dataset_size += 1
 
 
         #self.input_paths.append({'dp_target': dp_target_folders, 'target':  target_folders,
@@ -97,7 +99,7 @@ class Videos_Dataset(BaseDataset):
         images = [t_X(img_X[..., np.newaxis].astype('float32')), t_Y(img_Y[..., np.newaxis].astype('float32'))]
         grid = torch.stack(images, dim=1)
         grid = grid.squeeze(dim=0)
-        grid = grid.permute(1, 2, 0)
+        #grid = grid.permute(1, 2, 0)
 
         result_dict['grid'] = grid
 
