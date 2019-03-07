@@ -44,31 +44,39 @@ for i, data in enumerate(dataset):
         data["dp_target"] = data["dp_target"].permute(1, 0, 2, 3, 4)
         data["target"] = data["target"].permute(1, 0, 2, 3, 4)
         data["texture"] = data["texture"].permute(1, 0, 2, 3, 4)
+        data["grid"] = data["grid"].permute(1, 0, 2, 3, 4)
 
         generated_video = []
         real_video = []
+        label = torch.cat((data["texture"][0], data["dp_target"][0]), dim=1)
+        grid = data['grid_source']
+        previous_frame = data['source']
+        print label.size()
+        print previous_frame.size()
+        print grid.size()
+        generated = model.inference(label, previous_frame, grid, None)
 
-        for i in range(0, data["dp_target"].shape[0]):
+        visuals = OrderedDict([('synthesized_image', util.tensor2im(generated.data[0]))])
+        img_path = data['path'][0] + str(0)
+        print('process image... %s' % img_path)
+        visualizer.save_images(webpage, visuals, img_path)
+        visualizer.display_current_results(visuals, 100, 12345)
 
-            label_tensors = []
-            for folder in opt.multinput:
-                if data[folder].dim() == 5:
-                    label_tensors.append(data[folder][i])
-                else:
-                    label_tensors.append(data[folder])
 
-            for lt in label_tensors:
-                print lt.size()
+        for i in range(1, data["dp_target"].shape[0]):
 
-            label = torch.cat(label_tensors, dim=1)
+            label = torch.cat((data["texture"][i], data["dp_target"][i]), dim=1)
 
-            generated = model.inference(label, None)
+            generated = model.inference(Variable(label), generated, Variable(data['grid'][i-1]),  None)
+
             print generated.size()
 
-            visuals = OrderedDict([('synthesized_image', util.tensor2im(generated.data[0]))])
-            img_path = data['path'][i]
+            visuals = OrderedDict([
+                ('true_image', util.tensor2im(data["target"][i].data[0])),
+                ('synthesized_image', util.tensor2im(generated.data[0]))])
+            img_path = data['path'][0] + str(i)
             print('process image... %s' % img_path)
-            visualizer.save_images(webpage, visuals, img_path[0].rsplit("/",1)[0] + str(i))
+            visualizer.save_images(webpage, visuals, img_path)
             visualizer.display_current_results(visuals, 100, 12345)
 
 

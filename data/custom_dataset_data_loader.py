@@ -5,7 +5,11 @@ from data.base_data_loader import BaseDataLoader
 def CreateDataset(opt):
     dataset = None
     from data.videos_dataset import Videos_Dataset
-    dataset = Videos_Dataset()
+    from data.video_test_dataset import  Videos_Test_Dataset
+    if opt.isTrain:
+        dataset = Videos_Dataset()
+    else:
+        dataset = Videos_Test_Dataset()
 
     print("dataset [%s] was created" % (dataset.name()))
     dataset.initialize(opt)

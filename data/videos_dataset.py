@@ -63,33 +63,27 @@ class Videos_Dataset(BaseDataset):
         result_dict = {}
         input_tensors = []
 
-        for key, value in current_paths.iteritems():
-            if key in self.opt.multinput:
-                img = Image.open(current_paths[key])
-                assert img.size == (self.opt.loadSize, self.opt.loadSize), "Sizes of the image are wrong: %r %r" %img.size[0] %img.size[1]
-                img_tensor = transform_img(img.convert('RGB'))
-                input_tensors.append(img_tensor)
+        img = Image.open(current_paths['texture'])
+        img_tensor = transform_img(img.convert('RGB'))
+        input_tensors.append(img_tensor)
+
+
+        img = Image.open(current_paths['dp_target'])
+        img_tensor = transform_img(img.convert('RGB'))
+        input_tensors.append(img_tensor)
 
         result_dict['input'] = torch.cat(input_tensors, dim=0)
 
         img = Image.open(current_paths['target'])
-        assert img.size == (self.opt.loadSize, self.opt.loadSize), "Sizes of the image are wrong: %r %r" % img.size[0] % \
-                                                                   img.size[1]
         img_tensor = transform_img(img.convert('RGB'))
         result_dict['target']= img_tensor
 
         img = Image.open(current_paths['previous_frame'])
-        assert img.size == (self.opt.loadSize, self.opt.loadSize), "Sizes of the image are wrong: %r %r" % img.size[0] % \
-                                                                   img.size[1]
         img_tensor = transform_img(img.convert('RGB'))
         result_dict['previous_frame'] = img_tensor
 
         img_Y = Image.open(current_paths['of_x'])
-        assert img.size == (self.opt.loadSize, self.opt.loadSize), "Sizes of the image are wrong: %r %r" % img.size[0] % \
-                                                                   img.size[1]
         img_X = Image.open(current_paths['of_y'])
-        assert img.size == (self.opt.loadSize, self.opt.loadSize), "Sizes of the image are wrong: %r %r" % img.size[0] % \
-                                                                   img.size[1]
 
         img_X = np.array(img_X)
         img_Y = np.array(img_Y)
