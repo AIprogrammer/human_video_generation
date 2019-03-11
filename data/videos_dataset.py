@@ -40,7 +40,6 @@ class Videos_Dataset(BaseDataset):
                                          'previous_frame': source_folders[i],
                                          'of_x': of_x_source[i], 'of_y': of_y_source[i]})
                 self.dataset_size += 1
-                print folder, i
             for j in range(1, len(target_folders)):
                 self.input_paths.append({'dp_target': dp_target_folders[j], 'target': target_folders[j],
                                          'texture': texture[j],
@@ -48,59 +47,56 @@ class Videos_Dataset(BaseDataset):
                                          'of_x': of_x[j-1], 'of_y': of_y[j-1]})
                 self.dataset_size += 1
 
-
-        #self.input_paths.append({'dp_target': dp_target_folders, 'target':  target_folders,
-        #                                 'dp_source': dp_source_folders[i],
-        #                                 'source': source_folders[i],
-        #                                 'texture': texture})
-
-        #self.dataset_size = len(sample_folders*opt.source_num)
+        self.dataset_size -=2
 
     def __getitem__(self, index):
 
-        current_paths = self.input_paths[index]
+
         transform_img = get_transform(self.opt, {})
-        result_dict = {}
-        input_tensors = []
+        result_dict = {'input': [], 'target': [], 'previous_frame': [], 'grid': []}
+        output = {}
+        output["paths"] = self.input_paths[index]
+        for i in range(3):
+            current_paths = self.input_paths[index+i]
+            input_tensors = []
+            img = Image.open(current_paths['texture'])
+            img_tensor = transform_img(img.convert('RGB'))
+            input_tensors.append(img_tensor)
 
-        img = Image.open(current_paths['texture'])
-        img_tensor = transform_img(img.convert('RGB'))
-        input_tensors.append(img_tensor)
+
+            img = Image.open(current_paths['dp_target'])
+            img_tensor = transform_img(img.convert('RGB'))
+            input_tensors.append(img_tensor)
+
+            result_dict['input'].append(torch.cat(input_tensors, dim=0))
+
+            img = Image.open(current_paths['target'])
+            img_tensor = transform_img(img.convert('RGB'))
+            result_dict['target'].append(img_tensor)
+
+            img = Image.open(current_paths['previous_frame'])
+            img_tensor = transform_img(img.convert('RGB'))
+            result_dict['previous_frame'].append(img_tensor)
+
+            img_Y = Image.open(current_paths['of_x'])
+            img_X = Image.open(current_paths['of_y'])
+
+            img_X = np.array(img_X)
+            img_Y = np.array(img_Y)
+
+            t_X, t_Y = get_optical_flow_transform(np.shape(img_Y))
+
+            images = [t_X(img_X[..., np.newaxis].astype('float32')), t_Y(img_Y[..., np.newaxis].astype('float32'))]
+            grid = torch.stack(images, dim=1)
+            grid = grid.squeeze(dim=0)
+
+            result_dict['grid'].append(grid)
 
 
-        img = Image.open(current_paths['dp_target'])
-        img_tensor = transform_img(img.convert('RGB'))
-        input_tensors.append(img_tensor)
+        for key, value in result_dict.iteritems():
+            output[key] = torch.stack(value, dim = 0)
 
-        result_dict['input'] = torch.cat(input_tensors, dim=0)
-
-        img = Image.open(current_paths['target'])
-        img_tensor = transform_img(img.convert('RGB'))
-        result_dict['target']= img_tensor
-
-        img = Image.open(current_paths['previous_frame'])
-        img_tensor = transform_img(img.convert('RGB'))
-        result_dict['previous_frame'] = img_tensor
-
-        img_Y = Image.open(current_paths['of_x'])
-        img_X = Image.open(current_paths['of_y'])
-
-        img_X = np.array(img_X)
-        img_Y = np.array(img_Y)
-
-        t_X, t_Y = get_optical_flow_transform(np.shape(img_Y))
-
-        images = [t_X(img_X[..., np.newaxis].astype('float32')), t_Y(img_Y[..., np.newaxis].astype('float32'))]
-        grid = torch.stack(images, dim=1)
-        grid = grid.squeeze(dim=0)
-        #grid = grid.permute(1, 2, 0)
-
-        result_dict['grid'] = grid
-
-        result_dict['paths'] = current_paths
-        #input_dict = {'dp_target': dp_target, 'target': target, 'texture': texture,
-        #              'dp_source': dp_source_tensor, 'source': source_tensor, 'path': path}
-        return result_dict
+        return output
 
     def __len__(self):
         return self.dataset_size // self.opt.batchSize * self.opt.batchSize

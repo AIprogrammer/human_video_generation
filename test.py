@@ -42,7 +42,6 @@ for i, data in enumerate(dataset):
         if i >= opt.how_many:
             break
         data["dp_target"] = data["dp_target"].permute(1, 0, 2, 3, 4)
-        data["target"] = data["target"].permute(1, 0, 2, 3, 4)
         data["texture"] = data["texture"].permute(1, 0, 2, 3, 4)
         data["grid"] = data["grid"].permute(1, 0, 2, 3, 4)
 
@@ -51,10 +50,8 @@ for i, data in enumerate(dataset):
         label = torch.cat((data["texture"][0], data["dp_target"][0]), dim=1)
         grid = data['grid_source']
         previous_frame = data['source']
-        print label.size()
-        print previous_frame.size()
-        print grid.size()
-        generated = model.inference(label, previous_frame, grid, None)
+        grid_set = torch.cat([label, grid], dim=1)
+        generated = model.inference(label, previous_frame, grid, grid_set)
 
         visuals = OrderedDict([('synthesized_image', util.tensor2im(generated.data[0]))])
         img_path = data['path'][0] + str(0)
@@ -66,13 +63,12 @@ for i, data in enumerate(dataset):
         for i in range(1, data["dp_target"].shape[0]):
 
             label = torch.cat((data["texture"][i], data["dp_target"][i]), dim=1)
-
-            generated = model.inference(Variable(label), generated, Variable(data['grid'][i-1]),  None)
+            grid_set = torch.cat([label, data['grid'][i-1]], dim=1)
+            generated = model.inference(label, generated, data['grid'][i-1], grid_set)
 
             print generated.size()
 
             visuals = OrderedDict([
-                ('true_image', util.tensor2im(data["target"][i].data[0])),
                 ('synthesized_image', util.tensor2im(generated.data[0]))])
             img_path = data['path'][0] + str(i)
             print('process image... %s' % img_path)

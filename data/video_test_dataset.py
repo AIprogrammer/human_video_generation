@@ -16,7 +16,6 @@ class Videos_Test_Dataset(BaseDataset):
         for folder in sample_folders:
             current_path = os.path.join(opt.dataroot, folder)
             dp_target_folders = (make_dataset(os.path.join(current_path, "dp_target")))
-            target_folders = (make_dataset(os.path.join(current_path, "target")))
             dp_source_folders = (make_dataset(os.path.join(current_path, "dp_source")))
             source_folders = (make_dataset(os.path.join(current_path, "source")))
             of_x = (make_dataset(os.path.join(current_path, "of_x")))
@@ -24,7 +23,6 @@ class Videos_Test_Dataset(BaseDataset):
             of_x_source = (make_dataset(os.path.join(current_path, "of_x_source")))
             of_y_source = (make_dataset(os.path.join(current_path, "of_y_source")))
             dp_target_folders.sort(key=natural_keys)
-            target_folders.sort(key=natural_keys)
             dp_source_folders.sort(key=natural_keys)
             source_folders.sort(key=natural_keys)
             of_x.sort(key=natural_keys)
@@ -35,7 +33,7 @@ class Videos_Test_Dataset(BaseDataset):
             for i in range(0, opt.source_num):
                 texture = (make_dataset(os.path.join(current_path, "texture%d"%i)))
                 texture.sort(key=natural_keys)
-                self.input_paths.append({'dp_target': dp_target_folders, 'target':  target_folders,
+                self.input_paths.append({'dp_target': dp_target_folders,
                                          'dp_source': dp_source_folders[i],
                                          'source': source_folders[i],
                                          'of_x':  of_x,
@@ -48,7 +46,6 @@ class Videos_Test_Dataset(BaseDataset):
 
     def __getitem__(self, index):
         dp_target_video = []
-        target_video = []
         texture_video = []
         current_paths = self.input_paths[index]
 
@@ -59,12 +56,6 @@ class Videos_Test_Dataset(BaseDataset):
             img_tensor = transform_img(img.convert('RGB'))
             dp_target_video.append(img_tensor)
 
-        for target_path in current_paths['target']:
-            img = Image.open(target_path)
-            params = get_params(self.opt, img.size)
-            transform_img = get_transform(self.opt, params)
-            img_tensor = transform_img(img.convert('RGB'))
-            target_video.append(img_tensor)
 
         for texture_path in current_paths['texture']:
             img = Image.open(texture_path)
@@ -75,7 +66,6 @@ class Videos_Test_Dataset(BaseDataset):
 
 
         dp_target = torch.stack(dp_target_video, 0)
-        target = torch.stack(target_video, 0)
         texture = torch.stack(texture_video, 0)
 
         dp_source = Image.open(current_paths['dp_source'])
@@ -119,7 +109,7 @@ class Videos_Test_Dataset(BaseDataset):
         grid_tensor = torch.stack(grid_tensors, 0)
 
 
-        input_dict = {'dp_target': dp_target, 'target': target, 'texture': texture,
+        input_dict = {'dp_target': dp_target, 'texture': texture,
                       'dp_source': dp_source_tensor, 'source': source_tensor,
                       'grid': grid_tensor, 'grid_source': grid_source, 'path':  current_paths['path']}
 

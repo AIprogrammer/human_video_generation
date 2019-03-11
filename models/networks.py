@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 import functools
-from torch.nn.functional import grid_sample
+from torch.nn.functional import grid_sample, interpolate
 from torch.autograd import Variable
 import numpy as np
 
@@ -44,6 +44,8 @@ def define_G(input_nc, output_nc, ngf, netG, n_downsample_global=3, n_blocks_glo
         assert(torch.cuda.is_available())   
         netG.cuda(gpu_ids[0])
     netG.apply(weights_init)
+    #netG = netG.model_downsample_grid_set[10].weight.zero_()
+    #netG = netG.model_downsample_grid_set[10].bias.zero_()
     return netG
 
 def define_D(input_nc, ndf, n_layers_D, norm='instance', use_sigmoid=False, num_D=1, getIntermFeat=False, gpu_ids=[]):        
@@ -206,13 +208,14 @@ class GlobalGenerator(nn.Module):
                       norm_layer(ngf * mult * 2), activation]
         self.model_downsample_previous = nn.Sequential(*model_downsample_previous)
 
-        model_downsample_grid = [nn.ReflectionPad2d(3), nn.Conv2d(2, 2, kernel_size=7, padding=0), norm_layer(ngf), activation]
-        ### downsample_grid
+        model_downsample_grid_set = [nn.ReflectionPad2d(3), nn.Conv2d(8, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
+        ### downsample_grid_set
         for i in range(n_downsampling):
-            mult = 2**i
-            model_downsample_grid += [nn.Conv2d(2, 2, kernel_size=3, stride=2, padding=1),
-                      norm_layer(2), activation]
-        self.model_downsample_grid = nn.Sequential(*model_downsample_grid)
+            mult = 2 ** i
+            model_downsample_grid_set += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1),
+                                 norm_layer(ngf * mult * 2), activation]
+        model_downsample_grid_set += [ nn.Conv2d(256, 2, kernel_size=1)]
+        self.model_downsample_grid_set = nn.Sequential(*model_downsample_grid_set)
 
         self.down_pair = nn.Conv2d(512, 256, kernel_size=1)
 
@@ -230,14 +233,16 @@ class GlobalGenerator(nn.Module):
         model += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]        
         self.model = nn.Sequential(*model)
             
-    def forward(self, input, prev_fram, grid):
+    def forward(self, input, prev_fram, grid, grid_set):
         model_downsample_output = self.model_downsample(input)
         prev_frame_output = self.model_downsample_previous(prev_fram)
-        grid_output = self.model_downsample_grid(grid).permute(0, 2, 3, 1)
-        warped = grid_sample(prev_frame_output, grid_output, padding_mode='reflection')
+        grid_set_output = self.model_downsample_grid_set(grid_set)
+        grid_output = interpolate(grid, size= (64, 64))
+        grid_output_global = (grid_set_output + grid_output).permute(0, 2, 3, 1)
+        warped = grid_sample(prev_frame_output, grid_output_global, padding_mode='reflection')
         output = torch.cat((model_downsample_output, warped), 1)
         output = self.down_pair(output)
-        return self.model(output)
+        return self.model(output), grid_output_global, grid_output, grid
         
 # Define a resnet block
 class ResnetBlock(nn.Module):

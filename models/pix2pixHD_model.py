@@ -110,38 +110,22 @@ class Pix2PixHDModel(BaseModel):
             params = list(self.netD.parameters())    
             self.optimizer_D = torch.optim.Adam(params, lr=opt.lr, betas=(opt.beta1, 0.999))
 
-    def encode_input(self, label_map, prev_frame, grid, inst_map=None, real_image=None, feat_map=None, infer=False):
+    def encode_input(self, label_map, prev_frame, grid, grid_set, inst_map=None, real_image=None, feat_map=None, infer=False):
         if self.opt.label_nc == 0:
-            input_label = label_map.data.cuda()
-            prev_frame = prev_frame.data.cuda()
-            grid = grid.data.cuda()
-        else:
-            # create one-hot vector for label map 
-            size = label_map.size()
-            oneHot_size = (size[0], self.opt.label_nc, size[2], size[3])
-            input_label = torch.cuda.FloatTensor(torch.Size(oneHot_size)).zero_()
-            input_label = input_label.scatter_(1, label_map.data.long().cuda(), 1.0)
-            if self.opt.data_type == 16:
-                input_label = input_label.half()
+            input_label = Variable(label_map.data.cuda())
+            prev_frame = Variable(prev_frame.data.cuda())
+            grid = Variable(grid.data.cuda())
+            grid_set = Variable(grid_set.data.cuda())
 
-        # get edges from instance map
-        if not self.opt.no_instance:
-            inst_map = inst_map.data.cuda()
-            edge_map = self.get_edges(inst_map)
-            input_label = torch.cat((input_label, edge_map), dim=1) 
-        input_label = Variable(input_label, volatile=infer)
+
+        #input_label = Variable(input_label, volatile=infer)
 
         # real images for training
         if real_image is not None:
             real_image = Variable(real_image.data.cuda())
 
-        # instance map for feature encoding
-        if self.use_features:
-            # get precomputed feature maps
-            if self.opt.load_features:
-                feat_map = Variable(feat_map.data.cuda())
 
-        return input_label, prev_frame, grid, inst_map, real_image, feat_map
+        return input_label, prev_frame, grid, grid_set, real_image
 
     def discriminate(self, input_label, test_image, use_pool=False):
         input_concat = torch.cat((input_label, test_image.detach()), dim=1)
@@ -151,17 +135,12 @@ class Pix2PixHDModel(BaseModel):
         else:
             return self.netD.forward(input_concat)
 
-    def forward(self, label, image, prev_frame, grid, inst=None,  feat=None, infer=False):
+    def forward(self, label, image, prev_frame, grid, grid_set, inst=None,  feat=None, infer=False):
         # Encode Inputs
-        input_label, prev_frame, grid, inst_map, real_image, feat_map = self.encode_input(label, prev_frame, grid, inst, image, feat)
+        input_label, prev_frame, grid, grid_set, real_image = self.encode_input(label, prev_frame, grid, grid_set, real_image = image)
         # Fake Generation
-        if self.use_features:
-            if not self.opt.load_features:
-                feat_map = self.netE.forward(real_image, inst_map)                     
-            input_concat = torch.cat((input_label, feat_map), dim=1)                        
-        else:
-            input_concat = input_label
-        fake_image = self.netG.forward(input_concat, prev_frame, grid)
+        input_concat = input_label
+        fake_image, grid_result, grid_output, grid = self.netG.forward(input_concat, prev_frame, grid, grid_set)
 
         # Fake Detection and Loss
         pred_fake_pool = self.discriminate(input_label, fake_image, use_pool=True)
@@ -191,25 +170,21 @@ class Pix2PixHDModel(BaseModel):
             loss_G_VGG = self.criterionVGG(fake_image, real_image) * self.opt.lambda_feat
         
         # Only return the fake_B image if necessary to save BW
-        return [ self.loss_filter( loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_D_real, loss_D_fake ), None if not infer else fake_image ]
+        return [ self.loss_filter( loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_D_real, loss_D_fake ),  fake_image,
+                 None if not infer else grid_result, None if not infer else grid_output, None if not infer else grid]
 
-    def inference(self, label, prev_frame, grid,inst):
+    def inference(self, label, prev_frame, grid, grid_set):
         # Encode Inputs        
-        input_label, prev_frame, grid, inst_map, _, _ = self.encode_input(Variable(label), Variable(prev_frame), Variable(grid), Variable(inst), infer=True)
+        input_label, prev_frame, grid, grid_set, _ = self.encode_input(Variable(label), Variable(prev_frame), Variable(grid), Variable(grid_set), infer=True)
 
         # Fake Generation
-        if self.use_features:       
-            # sample clusters from precomputed features             
-            feat_map = self.sample_features(inst_map)
-            input_concat = torch.cat((input_label, feat_map), dim=1)                        
-        else:
-            input_concat = input_label        
+        input_concat = input_label
            
         if torch.__version__.startswith('0.4'):
             with torch.no_grad():
-                fake_image = self.netG.forward(input_concat, prev_frame, grid)
+                fake_image, grid_result, _, _ = self.netG.forward(input_concat, prev_frame, grid, grid_set)
         else:
-            fake_image = self.netG.forward(input_concat, prev_frame, grid)
+            fake_image, grid_result, _, _ = self.netG.forward(input_concat, prev_frame, grid, grid_set)
         return fake_image
 
     def sample_features(self, inst): 
