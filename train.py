@@ -75,16 +75,6 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
 
-        ############### Backward Pass ####################
-        # update generator weights
-        model.module.optimizer_G.zero_grad()
-        loss_G.backward()
-        model.module.optimizer_G.step()
-
-        # update discriminator weights
-        model.module.optimizer_D.zero_grad()
-        loss_D.backward()
-        model.module.optimizer_D.step()
 
         ### display output images
         # if save_fake:
@@ -114,25 +104,25 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             loss_dict = dict(zip(model.module.loss_names, losses))
 
             # calculate final loss scalar
-            loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
-            loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat', 0) + loss_dict.get('G_VGG', 0)
-
-            ############### Backward Pass ####################
-            # update generator weights
-            model.module.optimizer_G.zero_grad()
-            loss_G.backward()
-            model.module.optimizer_G.step()
-
-            # update discriminator weights
-            model.module.optimizer_D.zero_grad()
-            loss_D.backward()
-            model.module.optimizer_D.step()
+            loss_D += (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
+            loss_G += loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat', 0) + loss_dict.get('G_VGG', 0)
 
             ### display output images
             if save_fake:
                 visuals = OrderedDict([('synthesized_video_%d'%f, util.tensor2im(generated.data[0])),
                                        ('real_video_%d'%f, util.tensor2im(data['target'][f][0]))])
                 visualizer.display_current_results(visuals, epoch, total_steps)
+                ############### Backward Pass ####################
+
+        # update generator weights
+        model.module.optimizer_G.zero_grad()
+        loss_G.backward()
+        model.module.optimizer_G.step()
+
+        # update discriminator weights
+        model.module.optimizer_D.zero_grad()
+        loss_D.backward()
+        model.module.optimizer_D.step()
         ### save latest model
         if total_steps % opt.save_latest_freq == save_delta:
             print('saving the latest model (epoch %d, total_steps %d)' % (epoch, total_steps))
