@@ -55,6 +55,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         data["target"] = data["target"].permute(1, 0, 2, 3, 4)
         data["previous_frame"] = data["previous_frame"].permute(1, 0, 2, 3, 4)
         data["grid"] = data["grid"].permute(1, 0, 2, 3, 4)
+        data["grid_source"] = data["grid_source"].permute(1, 0, 2, 3, 4)
 
         iter_start_time = time.time()
         epoch_iter += opt.batchSize
@@ -62,10 +63,10 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
 
-        grid_set = torch.cat([data['input'][0], data['grid'][0]], dim = 1)
+        grid_set = torch.cat([data['input'][0], data['grid_source'][0]], dim = 1)
         ############## Forward Pass ######################
         losses, generated, grid, grid_output, grid_normal = model(data['input'][0], data['target'][0], data['previous_frame'][0],
-                                  data['grid'][0], grid_set, infer=save_fake)
+                                  data['grid_source'][0], grid_set, infer=save_fake)
 
         # sum per device losses
         losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
@@ -74,6 +75,16 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
+
+        # update generator weights
+        model.module.optimizer_G.zero_grad()
+        loss_G.backward()
+        model.module.optimizer_G.step()
+
+        # update discriminator weights
+        model.module.optimizer_D.zero_grad()
+        loss_D.backward()
+        model.module.optimizer_D.step()
 
 
         ### display output images
@@ -104,8 +115,18 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             loss_dict = dict(zip(model.module.loss_names, losses))
 
             # calculate final loss scalar
-            loss_D += (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
-            loss_G += loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat', 0) + loss_dict.get('G_VGG', 0)
+            loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
+            loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat', 0) + loss_dict.get('G_VGG', 0)
+
+            # update generator weights
+            model.module.optimizer_G.zero_grad()
+            loss_G.backward()
+            model.module.optimizer_G.step()
+
+            # update discriminator weights
+            model.module.optimizer_D.zero_grad()
+            loss_D.backward()
+            model.module.optimizer_D.step()
 
             ### display output images
             if save_fake:
@@ -114,22 +135,14 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                 visualizer.display_current_results(visuals, epoch, total_steps)
                 ############### Backward Pass ####################
 
-        # update generator weights
-        model.module.optimizer_G.zero_grad()
-        loss_G.backward()
-        model.module.optimizer_G.step()
 
-        # update discriminator weights
-        model.module.optimizer_D.zero_grad()
-        loss_D.backward()
-        model.module.optimizer_D.step()
         ### save latest model
         if total_steps % opt.save_latest_freq == save_delta:
             print('saving the latest model (epoch %d, total_steps %d)' % (epoch, total_steps))
             model.module.save('latest')
             np.savetxt(iter_path, (epoch, epoch_iter), delimiter=',', fmt='%d')
             for key, value in (data['paths']).iteritems():
-                print key + "      " + value[0]
+                print key + "      " + value[0][0]
 
         if epoch_iter >= dataset_size:
             break

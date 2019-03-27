@@ -10,10 +10,11 @@ import util.util as util
 from util.visualizer import Visualizer
 from util import html
 import torch
+import numpy as np
 
 opt = TestOptions().parse(save=False)
 opt.nThreads = 1   # test code only supports nThreads = 1
-opt.batchSize = 1  # test code only supports batchSize = 1
+opt.batchSize = 5  # test code only supports batchSize = 1
 opt.serial_batches = True  # no shuffle
 opt.no_flip = True  # no flip
 
@@ -53,8 +54,9 @@ for i, data in enumerate(dataset):
         grid_set = torch.cat([label, grid], dim=1)
         generated = model.inference(label, previous_frame, grid, grid_set)
 
-        visuals = OrderedDict([('synthesized_image', util.tensor2im(generated.data[0]))])
-        img_path = data['path'][0] + str(0)
+        stacked_images = np.hstack(util.tensor2im(generated.data[i]) for i in range(0, 5))
+        visuals = OrderedDict([('synthesized_image', stacked_images)])
+        img_path = str(0)
         print('process image... %s' % img_path)
         visualizer.save_images(webpage, visuals, img_path)
         visualizer.display_current_results(visuals, 100, 12345)
@@ -66,11 +68,10 @@ for i, data in enumerate(dataset):
             grid_set = torch.cat([label, data['grid'][i-1]], dim=1)
             generated = model.inference(label, generated, data['grid'][i-1], grid_set)
 
-            print generated.size()
 
-            visuals = OrderedDict([
-                ('synthesized_image', util.tensor2im(generated.data[0]))])
-            img_path = data['path'][0] + str(i)
+            stacked_images = np.hstack(util.tensor2im(generated.data[i]) for i in range(0, 5))
+            visuals = OrderedDict([('synthesized_image', stacked_images)])
+            img_path = str(i)
             print('process image... %s' % img_path)
             visualizer.save_images(webpage, visuals, img_path)
             visualizer.display_current_results(visuals, 100, 12345)
