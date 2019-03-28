@@ -1,4 +1,4 @@
-### Copyright (C) 2017 NVIDIA Corporation. All rights reserved. 
+### Copyright (C) 2017 NVIDIA Corporation. All rights reserved.
 ### Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 import torch
 import torch.nn as nn
@@ -27,13 +27,13 @@ def get_norm_layer(norm_type='instance'):
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
 
-def define_G(input_nc, output_nc, ngf, netG, n_downsample_global=3, n_blocks_global=9, n_local_enhancers=1, 
-             n_blocks_local=3, norm='instance', gpu_ids=[]):    
-    norm_layer = get_norm_layer(norm_type=norm)     
-    if netG == 'global':    
-        netG = GlobalGenerator(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global, norm_layer)       
-    elif netG == 'local':        
-        netG = LocalEnhancer(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global, 
+def define_G(input_nc, output_nc, ngf, netG, n_downsample_global=3, n_blocks_global=9, n_local_enhancers=1,
+             n_blocks_local=3, norm='instance', gpu_ids=[]):
+    norm_layer = get_norm_layer(norm_type=norm)
+    if netG == 'global':
+        netG = GlobalGenerator(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global, norm_layer)
+    elif netG == 'local':
+        netG = LocalEnhancer(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global,
                                   n_local_enhancers, n_blocks_local, norm_layer)
     elif netG == 'encoder':
         netG = Encoder(input_nc, output_nc, ngf, n_downsample_global, norm_layer)
@@ -41,16 +41,16 @@ def define_G(input_nc, output_nc, ngf, netG, n_downsample_global=3, n_blocks_glo
         raise('generator not implemented!')
     print(netG)
     if len(gpu_ids) > 0:
-        assert(torch.cuda.is_available())   
+        assert(torch.cuda.is_available())
         netG.cuda(gpu_ids[0])
     netG.apply(weights_init)
     #netG = netG.model_downsample_grid_set[10].weight.zero_()
     #netG = netG.model_downsample_grid_set[10].bias.zero_()
     return netG
 
-def define_D(input_nc, ndf, n_layers_D, norm='instance', use_sigmoid=False, num_D=1, getIntermFeat=False, gpu_ids=[]):        
-    norm_layer = get_norm_layer(norm_type=norm)   
-    netD = MultiscaleDiscriminator(input_nc, ndf, n_layers_D, norm_layer, use_sigmoid, num_D, getIntermFeat)   
+def define_D(input_nc, ndf, n_layers_D, norm='instance', use_sigmoid=False, num_D=1, getIntermFeat=False, gpu_ids=[]):
+    norm_layer = get_norm_layer(norm_type=norm)
+    netD = MultiscaleDiscriminator(input_nc, ndf, n_layers_D, norm_layer, use_sigmoid, num_D, getIntermFeat)
     print(netD)
     if len(gpu_ids) > 0:
         assert(torch.cuda.is_available())
@@ -110,46 +110,64 @@ class GANLoss(nn.Module):
                 target_tensor = self.get_target_tensor(pred, target_is_real)
                 loss += self.loss(pred, target_tensor)
             return loss
-        else:            
+        else:
             target_tensor = self.get_target_tensor(input[-1], target_is_real)
             return self.loss(input[-1], target_tensor)
 
 class VGGLoss(nn.Module):
     def __init__(self, gpu_ids):
-        super(VGGLoss, self).__init__()        
+        super(VGGLoss, self).__init__()
         self.vgg = Vgg19().cuda()
         self.criterion = nn.L1Loss()
-        self.weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]        
+        self.weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
 
-    def forward(self, x, y):              
+    def forward(self, x, y):
         x_vgg, y_vgg = self.vgg(x), self.vgg(y)
         loss = 0
         for i in range(len(x_vgg)):
-            loss += self.weights[i] * self.criterion(x_vgg[i], y_vgg[i].detach())        
+            loss += self.weights[i] * self.criterion(x_vgg[i], y_vgg[i].detach())
+        return loss
+
+class WarpLoss(nn.Module):
+    def __init__(self, gpu_ids):
+        super(WarpLoss, self).__init__()
+        self.criterion = nn.L1Loss()
+        self.weight = 1.0
+
+    def forward(self, grid, source, previous, real):
+        loss = 0
+        size = list(grid.shape)[1:3]
+        source = interpolate(source, size, mode='bilinear')
+        previous = interpolate(previous,  size,  mode='bilinear')
+        real = interpolate(real, size, mode='bilinear')
+        warped_source = grid_sample(source, grid, padding_mode='reflection')
+        warped_previous = grid_sample(previous, grid, padding_mode='reflection')
+        loss += self.weight* self.criterion(warped_source, real.detach())
+        loss += self.weight* self.criterion(warped_previous, real.detach())
         return loss
 
 ##############################################################################
 # Generator
 ##############################################################################
 class LocalEnhancer(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=32, n_downsample_global=3, n_blocks_global=9, 
-                 n_local_enhancers=1, n_blocks_local=3, norm_layer=nn.BatchNorm2d, padding_type='reflect'):        
+    def __init__(self, input_nc, output_nc, ngf=32, n_downsample_global=3, n_blocks_global=9,
+                 n_local_enhancers=1, n_blocks_local=3, norm_layer=nn.BatchNorm2d, padding_type='reflect'):
         super(LocalEnhancer, self).__init__()
         self.n_local_enhancers = n_local_enhancers
-        
-        ###### global generator model #####           
+
+        ###### global generator model #####
         ngf_global = ngf * (2**n_local_enhancers)
-        model_global = GlobalGenerator(input_nc, output_nc, ngf_global, n_downsample_global, n_blocks_global, norm_layer).model        
-        model_global = [model_global[i] for i in range(len(model_global)-3)] # get rid of final convolution layers        
-        self.model = nn.Sequential(*model_global)                
+        model_global = GlobalGenerator(input_nc, output_nc, ngf_global, n_downsample_global, n_blocks_global, norm_layer).model
+        model_global = [model_global[i] for i in range(len(model_global)-3)] # get rid of final convolution layers
+        self.model = nn.Sequential(*model_global)
 
         ###### local enhancer layers #####
         for n in range(1, n_local_enhancers+1):
-            ### downsample            
+            ### downsample
             ngf_global = ngf * (2**(n_local_enhancers-n))
-            model_downsample = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf_global, kernel_size=7, padding=0), 
+            model_downsample = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf_global, kernel_size=7, padding=0),
                                 norm_layer(ngf_global), nn.ReLU(True),
-                                nn.Conv2d(ngf_global, ngf_global * 2, kernel_size=3, stride=2, padding=1), 
+                                nn.Conv2d(ngf_global, ngf_global * 2, kernel_size=3, stride=2, padding=1),
                                 norm_layer(ngf_global * 2), nn.ReLU(True)]
             ### residual blocks
             model_upsample = []
@@ -157,40 +175,40 @@ class LocalEnhancer(nn.Module):
                 model_upsample += [ResnetBlock(ngf_global * 2, padding_type=padding_type, norm_layer=norm_layer)]
 
             ### upsample
-            model_upsample += [nn.ConvTranspose2d(ngf_global * 2, ngf_global, kernel_size=3, stride=2, padding=1, output_padding=1), 
-                               norm_layer(ngf_global), nn.ReLU(True)]      
+            model_upsample += [nn.ConvTranspose2d(ngf_global * 2, ngf_global, kernel_size=3, stride=2, padding=1, output_padding=1),
+                               norm_layer(ngf_global), nn.ReLU(True)]
 
             ### final convolution
-            if n == n_local_enhancers:                
-                model_upsample += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]                       
-            
+            if n == n_local_enhancers:
+                model_upsample += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]
+
             setattr(self, 'model'+str(n)+'_1', nn.Sequential(*model_downsample))
-            setattr(self, 'model'+str(n)+'_2', nn.Sequential(*model_upsample))                  
-        
+            setattr(self, 'model'+str(n)+'_2', nn.Sequential(*model_upsample))
+
         self.downsample = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
 
-    def forward(self, input): 
+    def forward(self, input):
         ### create input pyramid
         input_downsampled = [input]
         for i in range(self.n_local_enhancers):
             input_downsampled.append(self.downsample(input_downsampled[-1]))
 
         ### output at coarest level
-        output_prev = self.model(input_downsampled[-1])        
+        output_prev = self.model(input_downsampled[-1])
         ### build up one layer at a time
         for n_local_enhancers in range(1, self.n_local_enhancers+1):
             model_downsample = getattr(self, 'model'+str(n_local_enhancers)+'_1')
-            model_upsample = getattr(self, 'model'+str(n_local_enhancers)+'_2')            
-            input_i = input_downsampled[self.n_local_enhancers-n_local_enhancers]            
+            model_upsample = getattr(self, 'model'+str(n_local_enhancers)+'_2')
+            input_i = input_downsampled[self.n_local_enhancers-n_local_enhancers]
             output_prev = model_upsample(model_downsample(input_i) + output_prev)
         return output_prev
 
 class GlobalGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, n_downsampling=3, n_blocks=9, norm_layer=nn.BatchNorm2d, 
+    def __init__(self, input_nc, output_nc, ngf=64, n_downsampling=3, n_blocks=9, norm_layer=nn.BatchNorm2d,
                  padding_type='reflect'):
         assert(n_blocks >= 0)
-        super(GlobalGenerator, self).__init__()        
-        activation = nn.ReLU(True)        
+        super(GlobalGenerator, self).__init__()
+        activation = nn.ReLU(True)
 
         model_downsample = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
         ### downsample
@@ -200,6 +218,7 @@ class GlobalGenerator(nn.Module):
                       norm_layer(ngf * mult * 2), activation]
         self.model_downsample = nn.Sequential(*model_downsample)
 
+
         model_downsample_previous = [nn.ReflectionPad2d(3), nn.Conv2d(3, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
         ### downsample_previous
         for i in range(n_downsampling):
@@ -208,42 +227,47 @@ class GlobalGenerator(nn.Module):
                       norm_layer(ngf * mult * 2), activation]
         self.model_downsample_previous = nn.Sequential(*model_downsample_previous)
 
-        model_downsample_grid_set = [nn.ReflectionPad2d(3), nn.Conv2d(8, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
+
         ### downsample_grid_set
+        model_downsample_grid_set = [nn.ReflectionPad2d(3), nn.Conv2d(8, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
         for i in range(n_downsampling):
             mult = 2 ** i
             model_downsample_grid_set += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1),
                                  norm_layer(ngf * mult * 2), activation]
-        model_downsample_grid_set += [ nn.Conv2d(256, 2, kernel_size=1)]
+        mult = 2 ** n_downsampling
+        ## adding 2 resnet blocks
+        for i in range(1, 3):
+            model_downsample_grid_set += [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
+        model_downsample_grid_set += [ nn.Conv2d(ngf*mult, 2, kernel_size=1)]
         self.model_downsample_grid_set = nn.Sequential(*model_downsample_grid_set)
 
-        self.down_pair = nn.Conv2d(512, 256, kernel_size=1)
+        ## convolution layer to decrease number of channels after concatenation
+        self.down_pair = nn.Conv2d(2*ngf*mult,ngf*mult, kernel_size=1)
 
         ### resnet blocks
-        mult = 2**n_downsampling
         model = [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
         for i in range(1, n_blocks):
             model += [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
-        
-        ### upsample         
+
+        ### upsample
         for i in range(n_downsampling):
             mult = 2**(n_downsampling - i)
             model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1),
                        norm_layer(int(ngf * mult / 2)), activation]
-        model += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]        
+        model += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]
         self.model = nn.Sequential(*model)
-            
+
     def forward(self, input, prev_fram, grid, grid_set):
         model_downsample_output = self.model_downsample(input)
         prev_frame_output = self.model_downsample_previous(prev_fram)
         grid_set_output = self.model_downsample_grid_set(grid_set)
-        grid_output = interpolate(grid, size= (64, 64))
+        grid_output = interpolate(grid, size= (64, 64), mode='bilinear')
         grid_output_global = (grid_set_output + grid_output).permute(0, 2, 3, 1)
         warped = grid_sample(prev_frame_output, grid_output_global, padding_mode='reflection')
         output = torch.cat((model_downsample_output, warped), 1)
         output = self.down_pair(output)
         return self.model(output), grid_output_global, grid_output, grid
-        
+
 # Define a resnet block
 class ResnetBlock(nn.Module):
     def __init__(self, dim, padding_type, norm_layer, activation=nn.ReLU(True), use_dropout=False):
@@ -288,54 +312,54 @@ class ResnetBlock(nn.Module):
 
 class Encoder(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=32, n_downsampling=4, norm_layer=nn.BatchNorm2d):
-        super(Encoder, self).__init__()        
-        self.output_nc = output_nc        
+        super(Encoder, self).__init__()
+        self.output_nc = output_nc
 
-        model = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0), 
-                 norm_layer(ngf), nn.ReLU(True)]             
+        model = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0),
+                 norm_layer(ngf), nn.ReLU(True)]
         ### downsample
         for i in range(n_downsampling):
             mult = 2**i
             model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1),
                       norm_layer(ngf * mult * 2), nn.ReLU(True)]
 
-        ### upsample         
+        ### upsample
         for i in range(n_downsampling):
             mult = 2**(n_downsampling - i)
             model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1),
-                       norm_layer(int(ngf * mult / 2)), nn.ReLU(True)]        
+                       norm_layer(int(ngf * mult / 2)), nn.ReLU(True)]
 
         model += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]
-        self.model = nn.Sequential(*model) 
+        self.model = nn.Sequential(*model)
 
     def forward(self, input, inst):
         outputs = self.model(input)
 
         # instance-wise average pooling
         outputs_mean = outputs.clone()
-        inst_list = np.unique(inst.cpu().numpy().astype(int))        
+        inst_list = np.unique(inst.cpu().numpy().astype(int))
         for i in inst_list:
             for b in range(input.size()[0]):
-                indices = (inst[b:b+1] == int(i)).nonzero() # n x 4            
+                indices = (inst[b:b+1] == int(i)).nonzero() # n x 4
                 for j in range(self.output_nc):
-                    output_ins = outputs[indices[:,0] + b, indices[:,1] + j, indices[:,2], indices[:,3]]                    
-                    mean_feat = torch.mean(output_ins).expand_as(output_ins)                                        
-                    outputs_mean[indices[:,0] + b, indices[:,1] + j, indices[:,2], indices[:,3]] = mean_feat                       
+                    output_ins = outputs[indices[:,0] + b, indices[:,1] + j, indices[:,2], indices[:,3]]
+                    mean_feat = torch.mean(output_ins).expand_as(output_ins)
+                    outputs_mean[indices[:,0] + b, indices[:,1] + j, indices[:,2], indices[:,3]] = mean_feat
         return outputs_mean
 
 class MultiscaleDiscriminator(nn.Module):
-    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, 
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d,
                  use_sigmoid=False, num_D=3, getIntermFeat=False):
         super(MultiscaleDiscriminator, self).__init__()
         self.num_D = num_D
         self.n_layers = n_layers
         self.getIntermFeat = getIntermFeat
-     
+
         for i in range(num_D):
             netD = NLayerDiscriminator(input_nc, ndf, n_layers, norm_layer, use_sigmoid, getIntermFeat)
-            if getIntermFeat:                                
+            if getIntermFeat:
                 for j in range(n_layers+2):
-                    setattr(self, 'scale'+str(i)+'_layer'+str(j), getattr(netD, 'model'+str(j)))                                   
+                    setattr(self, 'scale'+str(i)+'_layer'+str(j), getattr(netD, 'model'+str(j)))
             else:
                 setattr(self, 'layer'+str(i), netD.model)
 
@@ -350,7 +374,7 @@ class MultiscaleDiscriminator(nn.Module):
         else:
             return [model(input)]
 
-    def forward(self, input):        
+    def forward(self, input):
         num_D = self.num_D
         result = []
         input_downsampled = input
@@ -363,7 +387,7 @@ class MultiscaleDiscriminator(nn.Module):
             if i != (num_D-1):
                 input_downsampled = self.downsample(input_downsampled)
         return result
-        
+
 # Defines the PatchGAN discriminator with the specified arguments.
 class NLayerDiscriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False, getIntermFeat=False):
@@ -414,7 +438,7 @@ class NLayerDiscriminator(nn.Module):
                 res.append(model(res[-1]))
             return res[1:]
         else:
-            return self.model(input)        
+            return self.model(input)
 
 from torchvision import models
 class Vgg19(torch.nn.Module):
@@ -442,9 +466,9 @@ class Vgg19(torch.nn.Module):
 
     def forward(self, X):
         h_relu1 = self.slice1(X)
-        h_relu2 = self.slice2(h_relu1)        
-        h_relu3 = self.slice3(h_relu2)        
-        h_relu4 = self.slice4(h_relu3)        
-        h_relu5 = self.slice5(h_relu4)                
+        h_relu2 = self.slice2(h_relu1)
+        h_relu3 = self.slice3(h_relu2)
+        h_relu4 = self.slice4(h_relu3)
+        h_relu5 = self.slice5(h_relu4)
         out = [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]
         return out

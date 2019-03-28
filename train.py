@@ -1,4 +1,4 @@
-### Copyright (C) 2017 NVIDIA Corporation. All rights reserved. 
+### Copyright (C) 2017 NVIDIA Corporation. All rights reserved.
 ### Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 import time
 from collections import OrderedDict
@@ -11,6 +11,7 @@ from util.visualizer import Visualizer
 import os
 import numpy as np
 import torch
+from torch.nn.functional import grid_sample
 from torch.autograd import Variable
 
 opt = TrainOptions().parse()
@@ -20,8 +21,8 @@ if opt.continue_train:
         start_epoch, epoch_iter = np.loadtxt(iter_path , delimiter=',', dtype=int)
     except:
         start_epoch, epoch_iter = 1, 0
-    print('Resuming from epoch %d at iteration %d' % (start_epoch, epoch_iter))        
-else:    
+    print('Resuming from epoch %d at iteration %d' % (start_epoch, epoch_iter))
+else:
     start_epoch, epoch_iter = 1, 0
 
 if opt.debug:
@@ -53,7 +54,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
     for i, data in enumerate(dataset, start=epoch_iter):
         data["input"] = data["input"].permute(1, 0, 2, 3, 4)
         data["target"] = data["target"].permute(1, 0, 2, 3, 4)
-        data["previous_frame"] = data["previous_frame"].permute(1, 0, 2, 3, 4)
+        data["source_frame"] = data["source_frame"].permute(1, 0, 2, 3, 4)
         data["grid"] = data["grid"].permute(1, 0, 2, 3, 4)
         data["grid_source"] = data["grid_source"].permute(1, 0, 2, 3, 4)
 
@@ -63,9 +64,18 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
 
-        grid_set = torch.cat([data['input'][0], data['grid_source'][0]], dim = 1)
+
+        ### grid in the relative coordinates
+        mesh_grid = util.make_coordinate_grid((opt.loadSize, opt.loadSize), type(data['grid_source'][0]), opt.batchSize)
+        rel_coord_grid = data['grid_source'][0] - mesh_grid
+        ###
+        warped_source = grid_sample(data['source_frame'][0], data['grid_source'][0].permute(0, 2, 3, 1), padding_mode='reflection')
+        grid_set = torch.cat([data['input'][0], warped_source, rel_coord_grid], dim = 1)
+
+
         ############## Forward Pass ######################
-        losses, generated, grid, grid_output, grid_normal = model(data['input'][0], data['target'][0], data['previous_frame'][0],
+        losses, generated, grid = model(data['input'][0], data['target'][0],
+                                  data['source_frame'][0], data['source_frame'][0],
                                   data['grid_source'][0], grid_set, infer=save_fake)
 
         # sum per device losses
@@ -74,7 +84,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
-        loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
+        loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0) + loss_dict.get('G_Warp',0)
 
         # update generator weights
         model.module.optimizer_G.zero_grad()
@@ -88,27 +98,28 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
 
         ### display output images
-        # if save_fake:
-        #     img = (data['previous_frame'][0]).cuda()
-        #     grid = grid.permute(0, 3, 1, 2).detach()
-        #     grid = functional.interpolate(grid, (256,256), mode='bilinear')
-        #     grid_output = functional.interpolate(grid_output.detach(), (256,256), mode='bilinear')
-        #     warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode='reflection')
-        #     warp_2 = functional.grid_sample(img, grid_output.permute(0, 2, 3, 1), padding_mode='reflection')
-        #     warp_3 = functional.grid_sample(img, grid_normal.permute(0, 2, 3, 1), padding_mode='reflection')
-        #     visuals = OrderedDict([('synthesized_video', util.tensor2im(generated.data[0])),
-        #                            ('real_video', util.tensor2im(data['target'][0][0])),
-        #                            ('warped_previous_image', util.tensor2im(warp[0])),
-        #                            ('warped_previous_image_2', util.tensor2im(warp_2[0])),
-        #                            ('warped_previous_image_3', util.tensor2im(warp_3[0]))])
-        #     visualizer.display_current_results(visuals, epoch, total_steps)
-        for f in range(1, 3):
-            grid_set = torch.cat([data['input'][f], data['grid'][f]], dim=1)
+        if save_fake:
+            img = (data['source_frame'][0]).cuda()
+            grid = grid.permute(0, 3, 1, 2).detach()
+            grid = functional.interpolate(grid, (256,256), mode='bilinear')
+            # grid_output = functional.interpolate(grid_output.detach(), (256,256), mode='bilinear')
+            warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode='reflection')
+            # warp_2 = functional.grid_sample(img, grid_output.permute(0, 2, 3, 1), padding_mode='reflection')
+             #warp_3 = functional.grid_sample(img, grid_normal.permute(0, 2, 3, 1), padding_mode='reflection')
+            visuals = OrderedDict([('synthesized_video', util.tensor2im(generated.data[0])),
+                                    ('real_video', util.tensor2im(data['target'][0][0])),
+                                    ('warped_source', util.tensor2im(warped_source.data[0])),
+                                    ('warped_with_learned_grid', util.tensor2im(warp[0]))])
+            visualizer.display_current_results(visuals, epoch, total_steps)
+        for f in range(1, 2):
+            # TODO not sure if it is ok to warp source or the previous frame
+            rel_coord_grid = data['grid'][f] - mesh_grid
+            warped_source = grid_sample(data['source_frame'][0], data['grid_source'][f].permute(0, 2, 3, 1), padding_mode='reflection')
+            grid_set = torch.cat([data['input'][f], warped_source, rel_coord_grid], dim=1)
             ############## Forward Pass ######################
-            losses, generated, grid, grid_output, grid_normal = model(data['input'][f], data['target'][f],
-                                                                      generated,
-                                                                      data['grid'][f],
-                                                                      grid_set, infer=save_fake)
+            losses, generated, grid  = model(data['input'][f], data['target'][f],
+                                            data['source_frame'][0], generated,
+                                            data['grid'][f], grid_set, infer=save_fake)
 
             # sum per device losses
             losses = [torch.mean(x) if not isinstance(x, int) else x for x in losses]
@@ -116,7 +127,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             # calculate final loss scalar
             loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
-            loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat', 0) + loss_dict.get('G_VGG', 0)
+            loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0) + loss_dict.get('G_Warp',0)
 
             # update generator weights
             model.module.optimizer_G.zero_grad()
@@ -146,15 +157,15 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
         if epoch_iter >= dataset_size:
             break
-       
-    # end of epoch 
+
+    # end of epoch
     iter_end_time = time.time()
     print('End of epoch %d / %d \t Time Taken: %d sec' %
           (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time))
 
     ### save model for this epoch
     if epoch % opt.save_epoch_freq == 0:
-        print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
+        print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))
         model.module.save('latest')
         model.module.save(epoch)
         np.savetxt(iter_path, (epoch+1, 0), delimiter=',', fmt='%d')

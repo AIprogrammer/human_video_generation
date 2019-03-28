@@ -23,6 +23,26 @@ def tensor2im(image_tensor, imtype=np.uint8, normalize=True):
         image_numpy = image_numpy[:,:,0]
     return image_numpy.astype(imtype)
 
+def make_coordinate_grid(spatial_size, type, batchsize):
+    """
+    Create a meshgrid [-1,1] x [-1,1] of given spatial_size.
+    """
+    h, w = spatial_size
+    x = torch.arange(w).type(type)
+    y = torch.arange(h).type(type)
+
+    x = (2 * (x / (w - 1)) - 1)
+    y = (2 * (y / (h - 1)) - 1)
+
+    yy = y.view(-1, 1).repeat(1, w)
+    xx = x.view(1, -1).repeat(h, 1)
+
+    meshed = torch.cat([xx.unsqueeze_(0), yy.unsqueeze_(0)], 0)
+    meshed = meshed.unsqueeze(0).repeat(batchsize, 1, 1, 1)
+
+    return meshed
+
+
 # Converts a one-hot tensor into a colorful label map
 def tensor2label(label_tensor, n_label, imtype=np.uint8):
     if n_label == 0:
