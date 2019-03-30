@@ -6,6 +6,7 @@ import functools
 from torch.nn.functional import grid_sample, interpolate
 from torch.autograd import Variable
 import numpy as np
+import util.util as util
 
 ###############################################################################
 # Functions
@@ -27,11 +28,11 @@ def get_norm_layer(norm_type='instance'):
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
 
-def define_G(input_nc, output_nc, ngf, netG, n_downsample_global=3, n_blocks_global=9, n_local_enhancers=1,
+def define_G(input_nc, output_nc, loadSize, batchSize, ngf, netG, n_downsample_global=3, n_blocks_global=9, n_local_enhancers=1,
              n_blocks_local=3, norm='instance', gpu_ids=[]):
     norm_layer = get_norm_layer(norm_type=norm)
     if netG == 'global':
-        netG = GlobalGenerator(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global, norm_layer)
+        netG = GlobalGenerator(input_nc, output_nc, loadSize, batchSize, ngf, n_downsample_global, n_blocks_global, norm_layer)
     elif netG == 'local':
         netG = LocalEnhancer(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global,
                                   n_local_enhancers, n_blocks_local, norm_layer)
@@ -131,20 +132,24 @@ class VGGLoss(nn.Module):
 class WarpLoss(nn.Module):
     def __init__(self, gpu_ids):
         super(WarpLoss, self).__init__()
+        self.vgg = Vgg19().cuda()
         self.criterion = nn.L1Loss()
-        self.weight = 1.0
+        self.weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
 
-    def forward(self, grid, source, previous, real):
-        loss = 0
-        size = list(grid.shape)[1:3]
+    def forward(self, grid_source, grid_prev, source, previous, real):
+        size = list(grid_source.shape)[1:3]
         source = interpolate(source, size, mode='bilinear')
         previous = interpolate(previous,  size,  mode='bilinear')
         real = interpolate(real, size, mode='bilinear')
-        warped_source = grid_sample(source, grid, padding_mode='reflection')
-        warped_previous = grid_sample(previous, grid, padding_mode='reflection')
-        loss += self.weight* self.criterion(warped_source, real.detach())
-        loss += self.weight* self.criterion(warped_previous, real.detach())
+        warped_source = grid_sample(source, grid_source, padding_mode='reflection')
+        warped_previous = grid_sample(previous, grid_prev, padding_mode='reflection')
+        x1_vgg, x2_vgg, y_vgg = self.vgg(warped_source), self.vgg(warped_previous), self.vgg(real)
+        loss = 0
+        for i in range(len(x1_vgg)):
+            loss += self.weights[i] * self.criterion(x1_vgg[i], y_vgg[i])
+            loss += self.weights[i] * self.criterion(x2_vgg[i], y_vgg[i].detach())
         return loss
+
 
 ##############################################################################
 # Generator
@@ -204,11 +209,13 @@ class LocalEnhancer(nn.Module):
         return output_prev
 
 class GlobalGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, n_downsampling=3, n_blocks=9, norm_layer=nn.BatchNorm2d,
+    def __init__(self, input_nc, output_nc, loadSize, batchSize, ngf=64, n_downsampling=3, n_blocks=9, norm_layer=nn.BatchNorm2d,
                  padding_type='reflect'):
         assert(n_blocks >= 0)
         super(GlobalGenerator, self).__init__()
         activation = nn.ReLU(True)
+        self.loadSize = loadSize
+        self.batchSize = batchSize
 
         model_downsample = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
         ### downsample
@@ -238,11 +245,15 @@ class GlobalGenerator(nn.Module):
         ## adding 2 resnet blocks
         for i in range(1, 3):
             model_downsample_grid_set += [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
-        model_downsample_grid_set += [ nn.Conv2d(ngf*mult, 2, kernel_size=1)]
+
+        conv = nn.Conv2d(ngf*mult, 2, kernel_size=1)
+        conv.weight.data.fill_(0.0)
+        conv.bias.data.fill_(0.0)
+        model_downsample_grid_set.append(conv)
         self.model_downsample_grid_set = nn.Sequential(*model_downsample_grid_set)
 
         ## convolution layer to decrease number of channels after concatenation
-        self.down_pair = nn.Conv2d(2*ngf*mult,ngf*mult, kernel_size=1)
+        self.down_pair = nn.Conv2d(3*ngf*mult,ngf*mult, kernel_size=1)
 
         ### resnet blocks
         model = [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
@@ -257,16 +268,34 @@ class GlobalGenerator(nn.Module):
         model += [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]
         self.model = nn.Sequential(*model)
 
-    def forward(self, input, prev_fram, grid, grid_set):
-        model_downsample_output = self.model_downsample(input)
-        prev_frame_output = self.model_downsample_previous(prev_fram)
+    def warp_module(self, frame, grid, dp_target):
+        ### grid in the relative coordinates
+        rel_coord_grid = grid - util.make_coordinate_grid((self.loadSize, self.loadSize), type(grid), self.batchSize).cuda()
+        warped_source = grid_sample(frame, grid.permute(0, 2, 3, 1), padding_mode='reflection')
+        grid_set = torch.cat([dp_target, warped_source, rel_coord_grid], dim = 1)
+        prev_frame_output = self.model_downsample_previous(frame)
         grid_set_output = self.model_downsample_grid_set(grid_set)
         grid_output = interpolate(grid, size= (64, 64), mode='bilinear')
         grid_output_global = (grid_set_output + grid_output).permute(0, 2, 3, 1)
-        warped = grid_sample(prev_frame_output, grid_output_global, padding_mode='reflection')
-        output = torch.cat((model_downsample_output, warped), 1)
+        return grid_output_global
+
+
+    def forward(self, dp_target, source_frame, prev_frame, grid_source, grid_prev):
+        model_downsample_output = self.model_downsample(dp_target)
+
+        ## previous frame preprocess
+        prev_frame_output = self.model_downsample_previous(prev_frame)
+        grid_for_prev = self.warp_module(prev_frame, grid_prev, dp_target)
+        warped_prev = grid_sample(prev_frame_output, grid_for_prev, padding_mode='reflection')
+
+        ## source frame warping
+        source_frame_output = self.model_downsample_previous(source_frame)
+        grid_for_source = self.warp_module(source_frame, grid_source, dp_target)
+        warped_source = grid_sample(source_frame_output, grid_for_source, padding_mode='reflection')
+
+        output = torch.cat((model_downsample_output, warped_source, warped_prev), 1)
         output = self.down_pair(output)
-        return self.model(output), grid_output_global, grid_output, grid
+        return self.model(output), grid_for_source, grid_for_prev
 
 # Define a resnet block
 class ResnetBlock(nn.Module):

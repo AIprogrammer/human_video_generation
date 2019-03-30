@@ -34,7 +34,7 @@ class Pix2PixHDModel(BaseModel):
             netG_input_nc += 1
         if self.use_features:
             netG_input_nc += opt.feat_num
-        self.netG = networks.define_G(netG_input_nc, opt.output_nc, opt.ngf, opt.netG,
+        self.netG = networks.define_G(netG_input_nc, opt.output_nc,opt.loadSize, opt.batchSize, opt.ngf, opt.netG,
                                       opt.n_downsample_global, opt.n_blocks_global, opt.n_local_enhancers,
                                       opt.n_blocks_local, opt.norm, gpu_ids=self.gpu_ids)
 
@@ -111,24 +111,19 @@ class Pix2PixHDModel(BaseModel):
             params = list(self.netD.parameters())
             self.optimizer_D = torch.optim.Adam(params, lr=opt.lr, betas=(opt.beta1, 0.999))
 
-    def encode_input(self, label_map,source_frame,  prev_frame, grid, grid_set, inst_map=None, real_image=None, feat_map=None, infer=False):
+    def encode_input(self, dp_target, source_frame, prev_frame, grid_source, grid_prev, inst_map=None, real_image=None, feat_map=None, infer=False):
         if self.opt.label_nc == 0:
-            input_label = Variable(label_map.data.cuda())
+            input_label = Variable(dp_target.data.cuda())
             source_frame =  Variable(source_frame.data.cuda())
             prev_frame = Variable(prev_frame.data.cuda())
-            grid = Variable(grid.data.cuda())
-            grid_set = Variable(grid_set.data.cuda())
-
-
-
-        #input_label = Variable(input_label, volatile=infer)
+            grid_source = Variable(grid_source.data.cuda())
+            grid_prev = Variable(grid_prev.data.cuda())
 
         # real images for training
         if real_image is not None:
             real_image = Variable(real_image.data.cuda())
 
-
-        return input_label, source_frame, prev_frame, grid, grid_set, real_image
+        return input_label, source_frame, prev_frame, grid_source, grid_prev, real_image
 
     def discriminate(self, input_label, test_image, use_pool=False):
         input_concat = torch.cat((input_label, test_image.detach()), dim=1)
@@ -138,13 +133,19 @@ class Pix2PixHDModel(BaseModel):
         else:
             return self.netD.forward(input_concat)
 
-    def forward(self, label, image, source_frame, prev_frame, grid, grid_set, inst=None,  feat=None, infer=False):
+    def forward(self, dp_target, source_frame, prev_frame, grid_source, grid_prev, image, inst=None,  feat=None, infer=False):
         # Encode Inputs
-        input_label, source_frame, prev_frame, grid, grid_set, real_image = self.encode_input(label,source_frame,  prev_frame, grid, grid_set, real_image = image)
-        # Fake Generation
-        input_concat = input_label
-        fake_image, grid_result, grid_output, grid = self.netG.forward(input_concat, prev_frame, grid, grid_set)
+        input_label, source_frame, prev_frame, grid_source, grid_prev, real_image = self.encode_input(
+                                                                            dp_target,
+                                                                            source_frame, prev_frame,
+                                                                            grid_source, grid_prev,
+                                                                            real_image = image)
 
+        fake_image, grid_for_source, grid_for_prev = self.netG.forward(input_label,
+                                                                  source_frame,
+                                                                  prev_frame,
+                                                                  grid_source,
+                                                                  grid_prev)
         # Fake Detection and Loss
         pred_fake_pool = self.discriminate(input_label, fake_image, use_pool=True)
         loss_D_fake = self.criterionGAN(pred_fake_pool, False)
@@ -173,10 +174,10 @@ class Pix2PixHDModel(BaseModel):
             loss_G_VGG = self.criterionVGG(fake_image, real_image) * self.opt.lambda_feat
 
 
-        loss_G_Warp = self.criterionWarp(grid_result, source_frame, prev_frame, real_image)
+        loss_G_Warp = self.criterionWarp( grid_for_source, grid_for_prev, source_frame, prev_frame, real_image)
 
         # Only return the fake_B image if necessary to save BW
-        return [ self.loss_filter( loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_Warp, loss_D_real, loss_D_fake ),  fake_image, grid_result]
+        return [ self.loss_filter( loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_Warp, loss_D_real, loss_D_fake ), fake_image, grid_for_source, grid_for_prev ]
 
     def inference(self, label, prev_frame, grid, grid_set):
         # Encode Inputs

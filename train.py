@@ -65,18 +65,11 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         save_fake = total_steps % opt.display_freq == display_delta
 
 
-        ### grid in the relative coordinates
-        mesh_grid = util.make_coordinate_grid((opt.loadSize, opt.loadSize), type(data['grid_source'][0]), opt.batchSize)
-        rel_coord_grid = data['grid_source'][0] - mesh_grid
-        ###
-        warped_source = grid_sample(data['source_frame'][0], data['grid_source'][0].permute(0, 2, 3, 1), padding_mode='reflection')
-        grid_set = torch.cat([data['input'][0], warped_source, rel_coord_grid], dim = 1)
-
-
         ############## Forward Pass ######################
-        losses, generated, grid = model(data['input'][0], data['target'][0],
-                                  data['source_frame'][0], data['source_frame'][0],
-                                  data['grid_source'][0], grid_set, infer=save_fake)
+        losses, generated, grid_for_source, grid_for_prev = model(data['input'][0],
+                                        data['source_frame'][0], data['source_frame'][0],
+                                        data['grid_source'][0], data['grid_source'][0],
+                                        image = data['target'][0], infer=save_fake)
 
         # sum per device losses
         losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
@@ -100,7 +93,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         ### display output images
         if save_fake:
             img = (data['source_frame'][0]).cuda()
-            grid = grid.permute(0, 3, 1, 2).detach()
+            grid = grid_for_source.permute(0, 3, 1, 2).detach()
             grid = functional.interpolate(grid, (256,256), mode='bilinear')
             # grid_output = functional.interpolate(grid_output.detach(), (256,256), mode='bilinear')
             warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode='reflection')
@@ -108,18 +101,24 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
              #warp_3 = functional.grid_sample(img, grid_normal.permute(0, 2, 3, 1), padding_mode='reflection')
             visuals = OrderedDict([('synthesized_video', util.tensor2im(generated.data[0])),
                                     ('real_video', util.tensor2im(data['target'][0][0])),
-                                    ('warped_source', util.tensor2im(warped_source.data[0])),
                                     ('warped_with_learned_grid', util.tensor2im(warp[0]))])
             visualizer.display_current_results(visuals, epoch, total_steps)
+
+        ############## Display results and errors ##########
+        ### print out errors
+        if total_steps % opt.print_freq == print_delta:
+            errors = {k: v.data if not isinstance(v, int) else v for k, v in loss_dict.items()}
+            t = (time.time() - iter_start_time) / opt.batchSize
+            visualizer.print_current_errors(epoch, epoch_iter, errors, t)
+            visualizer.plot_current_errors(errors, total_steps)
+
         for f in range(1, 2):
-            # TODO not sure if it is ok to warp source or the previous frame
-            rel_coord_grid = data['grid'][f] - mesh_grid
-            warped_source = grid_sample(data['source_frame'][0], data['grid_source'][f].permute(0, 2, 3, 1), padding_mode='reflection')
-            grid_set = torch.cat([data['input'][f], warped_source, rel_coord_grid], dim=1)
             ############## Forward Pass ######################
-            losses, generated, grid  = model(data['input'][f], data['target'][f],
+
+            losses, generated, grid_for_source, grid_for_prev  = model(data['input'][f],
                                             data['source_frame'][0], generated,
-                                            data['grid'][f], grid_set, infer=save_fake)
+                                            data['grid_source'][0], data['grid'][f],
+                                            image = data['target'][f], infer=save_fake)
 
             # sum per device losses
             losses = [torch.mean(x) if not isinstance(x, int) else x for x in losses]
@@ -145,7 +144,6 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                                        ('real_video_%d'%f, util.tensor2im(data['target'][f][0]))])
                 visualizer.display_current_results(visuals, epoch, total_steps)
                 ############### Backward Pass ####################
-
 
         ### save latest model
         if total_steps % opt.save_latest_freq == save_delta:
@@ -180,11 +178,3 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
 
     #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"])
-
-        ############## Display results and errors ##########
-        ### print out errors
-        #if total_steps % opt.print_freq == print_delta:
-         #   errors = {k: v.data[0] if not isinstance(v, int) else v for k, v in loss_dict.items()}
-          #  t = (time.time() - iter_start_time) / opt.batchSize
-           # visualizer.print_current_errors(epoch, epoch_iter, errors, t)
-            #visualizer.plot_current_errors(errors, total_steps)
