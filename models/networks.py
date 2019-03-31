@@ -45,8 +45,8 @@ def define_G(input_nc, output_nc, loadSize, batchSize, ngf, netG, n_downsample_g
         assert(torch.cuda.is_available())
         netG.cuda(gpu_ids[0])
     netG.apply(weights_init)
-    #netG = netG.model_downsample_grid_set[10].weight.zero_()
-    #netG = netG.model_downsample_grid_set[10].bias.zero_()
+    netG.model_downsample_grid_set[12].weight.data.fill_(0.0)
+    netG.model_downsample_grid_set[12].bias.data.fill_(0.0)
     return netG
 
 def define_D(input_nc, ndf, n_layers_D, norm='instance', use_sigmoid=False, num_D=1, getIntermFeat=False, gpu_ids=[]):
@@ -245,11 +245,7 @@ class GlobalGenerator(nn.Module):
         ## adding 2 resnet blocks
         for i in range(1, 3):
             model_downsample_grid_set += [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
-
-        conv = nn.Conv2d(ngf*mult, 2, kernel_size=1)
-        conv.weight.data.fill_(0.0)
-        conv.bias.data.fill_(0.0)
-        model_downsample_grid_set.append(conv)
+        model_downsample_grid_set += [nn.Conv2d(ngf*mult, 2, kernel_size=1)]
         self.model_downsample_grid_set = nn.Sequential(*model_downsample_grid_set)
 
         ## convolution layer to decrease number of channels after concatenation
@@ -273,7 +269,6 @@ class GlobalGenerator(nn.Module):
         rel_coord_grid = grid - util.make_coordinate_grid((self.loadSize, self.loadSize), type(grid), self.batchSize).cuda()
         warped_source = grid_sample(frame, grid.permute(0, 2, 3, 1), padding_mode='reflection')
         grid_set = torch.cat([dp_target, warped_source, rel_coord_grid], dim = 1)
-        prev_frame_output = self.model_downsample_previous(frame)
         grid_set_output = self.model_downsample_grid_set(grid_set)
         grid_output = interpolate(grid, size= (64, 64), mode='bilinear')
         grid_output_global = (grid_set_output + grid_output).permute(0, 2, 3, 1)

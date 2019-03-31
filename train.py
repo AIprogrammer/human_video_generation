@@ -94,13 +94,14 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         if save_fake:
             img = (data['source_frame'][0]).cuda()
             grid = grid_for_source.permute(0, 3, 1, 2).detach()
-            grid = functional.interpolate(grid, (256,256), mode='bilinear')
-            # grid_output = functional.interpolate(grid_output.detach(), (256,256), mode='bilinear')
+            grid = functional.interpolate(grid, (256,256), mode = 'bilinear' )
             warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode='reflection')
-            # warp_2 = functional.grid_sample(img, grid_output.permute(0, 2, 3, 1), padding_mode='reflection')
-             #warp_3 = functional.grid_sample(img, grid_normal.permute(0, 2, 3, 1), padding_mode='reflection')
+            warped_source = grid_sample(data['source_frame'][0], data['grid_source'][0].permute(0, 2, 3, 1), padding_mode='reflection')
+
             visuals = OrderedDict([('synthesized_video', util.tensor2im(generated.data[0])),
+                                    ('source_video', util.tensor2im(data['source_frame'][0][0])),
                                     ('real_video', util.tensor2im(data['target'][0][0])),
+                                    ('warped_source', util.tensor2im(warped_source.data[0])),
                                     ('warped_with_learned_grid', util.tensor2im(warp[0]))])
             visualizer.display_current_results(visuals, epoch, total_steps)
 
@@ -117,7 +118,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             losses, generated, grid_for_source, grid_for_prev  = model(data['input'][f],
                                             data['source_frame'][0], generated,
-                                            data['grid_source'][0], data['grid'][f],
+                                            data['grid_source'][f], data['grid'][f],
                                             image = data['target'][f], infer=save_fake)
 
             # sum per device losses
@@ -140,8 +141,15 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
 
             ### display output images
             if save_fake:
+                img = (data['source_frame'][0]).cuda()
+                grid = grid_for_source.permute(0, 3, 1, 2).detach()
+                grid = functional.interpolate(grid, (256,256),mode = 'bilinear' )
+                warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode='reflection')
+                warped_source = grid_sample(data['source_frame'][0], data['grid_source'][f].permute(0, 2, 3, 1), padding_mode='reflection')
                 visuals = OrderedDict([('synthesized_video_%d'%f, util.tensor2im(generated.data[0])),
-                                       ('real_video_%d'%f, util.tensor2im(data['target'][f][0]))])
+                                       ('real_video_%d'%f, util.tensor2im(data['target'][f][0])),
+                                       ('warped_source_%d'%f, util.tensor2im(warped_source.data[0])),
+                                       ('warped_with_learned_grid_%d'%f, util.tensor2im(warp[0]))])
                 visualizer.display_current_results(visuals, epoch, total_steps)
                 ############### Backward Pass ####################
 
