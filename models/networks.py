@@ -216,6 +216,7 @@ class GlobalGenerator(nn.Module):
         activation = nn.ReLU(True)
         self.loadSize = loadSize
         self.batchSize = batchSize
+        print "INPUT NUMBER OF CHANNELS", input_nc
 
         model_downsample = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
         ### downsample
@@ -277,6 +278,9 @@ class GlobalGenerator(nn.Module):
 
     def forward(self, dp_target, source_frame, prev_frame, grid_source, grid_prev):
         model_downsample_output = self.model_downsample(dp_target)
+
+        print prev_frame.size()
+        print dp_target.size()
 
         ## previous frame preprocess
         prev_frame_output = self.model_downsample_previous(prev_frame)

@@ -30,10 +30,7 @@ class Pix2PixHDModel(BaseModel):
         ##### define networks
         # Generator network
         netG_input_nc = input_nc
-        if not opt.no_instance:
-            netG_input_nc += 1
-        if self.use_features:
-            netG_input_nc += opt.feat_num
+
         self.netG = networks.define_G(netG_input_nc, opt.output_nc,opt.loadSize, opt.batchSize, opt.ngf, opt.netG,
                                       opt.n_downsample_global, opt.n_blocks_global, opt.n_local_enhancers,
                                       opt.n_blocks_local, opt.norm, gpu_ids=self.gpu_ids)
@@ -179,18 +176,26 @@ class Pix2PixHDModel(BaseModel):
         # Only return the fake_B image if necessary to save BW
         return [ self.loss_filter( loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_Warp, loss_D_real, loss_D_fake ), fake_image, grid_for_source, grid_for_prev ]
 
-    def inference(self, label, prev_frame, grid, grid_set):
+    def inference(self, dp_target, source_frame, prev_frame, grid_source, grid_prev):
         # Encode Inputs
-        input_label, prev_frame, grid, grid_set, _ = self.encode_input(Variable(label), Variable(prev_frame), Variable(grid), Variable(grid_set), infer=True)
-
-        # Fake Generation
-        input_concat = input_label
+        input_label, source_frame, prev_frame, grid_source, grid_prev, real_image = self.encode_input(
+                                                                            dp_target,
+                                                                            source_frame, prev_frame,
+                                                                            grid_source, grid_prev, infer=True)
 
         if torch.__version__.startswith('0.4'):
             with torch.no_grad():
-                fake_image, grid_result, _, _ = self.netG.forward(input_concat, prev_frame, grid, grid_set)
+                fake_image, grid_result, _ = self.netG.forward(input_label,
+                                                                          source_frame,
+                                                                          prev_frame,
+                                                                          grid_source,
+                                                                          grid_prev)
         else:
-            fake_image, grid_result, _, _ = self.netG.forward(input_concat, prev_frame, grid, grid_set)
+            fake_image, grid_result, _ = self.netG.forward(input_label,
+                                                                      source_frame,
+                                                                      prev_frame,
+                                                                      grid_source,
+                                                                      grid_prev)
         return fake_image
 
     def sample_features(self, inst):

@@ -119,6 +119,7 @@ class Visualizer():
         name = os.path.splitext(short_path)[0]
         name = short_path
 
+        print short_path
         webpage.add_header(name)
         ims = []
         txts = []
