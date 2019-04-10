@@ -21,6 +21,7 @@ class BaseOptions():
         self.parser.add_argument('--data_type', default=32, type=int, choices=[8, 16, 32], help="Supported data type i.e. 8, 16, 32 bit")
         self.parser.add_argument('--verbose', action='store_true', default=False, help='toggles verbose')
         self.parser.add_argument('--naive_warp', action='store_true', default=False, help='if specified then do naive warp')
+        self.parser.add_argument('--grid_padding', type=str, default='reflection', help='padding mode for the grid_sample [reflection|border|zeros]')
 
         # input/output sizes
         self.parser.add_argument('--batchSize', type=int, default=1, help='input batch size')
@@ -32,9 +33,8 @@ class BaseOptions():
 
         # for setting inputs
         self.parser.add_argument('--dataroot', type=str, default='./datasets/cityscapes/')
-        self.parser.add_argument('--multinput',  nargs='+',  type=str, default=[])
         self.parser.add_argument('--source_num', type=int, default=10, help='number of different source images per video')
-        self.parser.add_argument('--resize_or_crop', type=str, default='scale_width', help='scaling and cropping of images at load time [resize_and_crop|crop|scale_width|scale_width_and_crop]')
+        self.parser.add_argument('--resize_or_crop', type=str, default='resize', help='scaling and cropping of images at load time [resize_and_crop|crop|scale_width|scale_width_and_crop]')
         self.parser.add_argument('--serial_batches', action='store_true', help='if true, takes images in order to make batches, otherwise takes them randomly')
         self.parser.add_argument('--no_flip', action='store_true', help='if specified, do not flip the images for data argumentation')
         self.parser.add_argument('--nThreads', default=2, type=int, help='# threads for loading data')

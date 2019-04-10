@@ -42,11 +42,16 @@ visualizer = Visualizer(opt)
 
 total_steps = (start_epoch-1) * dataset_size + epoch_iter
 
+lr_descrease_freq = (opt.niter * dataset_size)  //  opt.niter_decay  + 1
+
+print("Frequency of the learning rate decay = %d iterations" % lr_descrease_freq)
+
 display_delta = total_steps % opt.display_freq
 print_delta = total_steps % opt.print_freq
 save_delta = total_steps % opt.save_latest_freq
+lr_decrease_delta = total_steps % lr_descrease_freq
 
-for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
+for epoch in range(start_epoch, opt.niter + 1):
     epoch_start_time = time.time()
     if epoch != start_epoch:
         epoch_iter = epoch_iter % dataset_size
@@ -63,6 +68,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         total_steps += opt.batchSize
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
+        lr_decay = total_steps %  lr_descrease_freq == lr_decrease_delta
 
 
         ############## Forward Pass ######################
@@ -95,8 +101,8 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             img = (data['source_frame'][0]).cuda()
             grid = grid_for_source.permute(0, 3, 1, 2).detach()
             grid = functional.interpolate(grid, (256,256), mode = 'bilinear' )
-            warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode='reflection')
-            warped_source = grid_sample(data['source_frame'][0], data['grid_source'][0].permute(0, 2, 3, 1), padding_mode='reflection')
+            warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode=opt.grid_padding)
+            warped_source = grid_sample(data['source_frame'][0], data['grid_source'][0].permute(0, 2, 3, 1), padding_mode=opt.grid_padding)
 
             visuals = OrderedDict([('synthesized_video', util.tensor2im(generated.data[0])),
                                     ('source_video', util.tensor2im(data['source_frame'][0][0])),
@@ -113,7 +119,7 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
             visualizer.print_current_errors(epoch, epoch_iter, errors, t)
             visualizer.plot_current_errors(errors, total_steps)
 
-        for f in range(1, 2):
+        for f in range(1, opt.prev_frame_num):
             ############## Forward Pass ######################
 
             losses, generated, grid_for_source, grid_for_prev  = model(data['input'][f],
@@ -144,14 +150,18 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
                 img = (data['source_frame'][0]).cuda()
                 grid = grid_for_source.permute(0, 3, 1, 2).detach()
                 grid = functional.interpolate(grid, (256,256),mode = 'bilinear' )
-                warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode='reflection')
-                warped_source = grid_sample(data['source_frame'][0], data['grid_source'][f].permute(0, 2, 3, 1), padding_mode='reflection')
+                warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode=opt.grid_padding)
+                warped_source = grid_sample(data['source_frame'][0], data['grid_source'][f].permute(0, 2, 3, 1), padding_mode=opt.grid_padding)
                 visuals = OrderedDict([('synthesized_video_%d'%f, util.tensor2im(generated.data[0])),
                                        ('real_video_%d'%f, util.tensor2im(data['target'][f][0])),
                                        ('warped_source_%d'%f, util.tensor2im(warped_source.data[0])),
                                        ('warped_with_learned_grid_%d'%f, util.tensor2im(warp[0]))])
                 visualizer.display_current_results(visuals, epoch, total_steps)
                 ############### Backward Pass ####################
+
+        ### linearly decay learning rate after certain iterations
+        if lr_decay:
+            model.module.update_learning_rate()
 
         ### save latest model
         if total_steps % opt.save_latest_freq == save_delta:
@@ -179,10 +189,6 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
     ### instead of only training the local enhancer, train the entire network after certain iterations
     if (opt.niter_fix_global != 0) and (epoch == opt.niter_fix_global):
         model.module.update_fixed_params()
-
-    ### linearly decay learning rate after certain iterations
-    if epoch > opt.niter:
-        model.module.update_learning_rate()
 
 
     #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"])

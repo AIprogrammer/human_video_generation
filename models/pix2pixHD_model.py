@@ -33,7 +33,7 @@ class Pix2PixHDModel(BaseModel):
 
         self.netG = networks.define_G(netG_input_nc, opt.output_nc,opt.loadSize, opt.batchSize, opt.ngf, opt.netG,
                                       opt.n_downsample_global, opt.n_blocks_global, opt.n_local_enhancers,
-                                      opt.n_blocks_local, opt.norm, gpu_ids=self.gpu_ids)
+                                      opt.n_blocks_local, opt.norm, gpu_ids=self.gpu_ids, grid_padding = 'reflection')
 
         # Discriminator network
         if self.isTrain:
@@ -74,7 +74,7 @@ class Pix2PixHDModel(BaseModel):
             self.criterionFeat = torch.nn.L1Loss()
             if not opt.no_vgg_loss:
                 self.criterionVGG = networks.VGGLoss(self.gpu_ids)
-            self.criterionWarp = networks.WarpLoss(self.gpu_ids)
+            self.criterionWarp = networks.WarpLoss(self.gpu_ids, opt.grid_padding)
 
 
             # Names so we can breakout loss

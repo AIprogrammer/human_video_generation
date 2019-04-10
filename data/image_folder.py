@@ -86,8 +86,7 @@ class DensePose:
         """
         warp_grid = self.coordinate_grid.copy()
         if self.oob_ocluded:
-            warp_grid[d_s[:, :, 2] != 0] = (-1, -1)
-
+            warp_grid[d_s[:, :, 2] != 0.0] = (-1.0, -1.0)
         for part_id in range(1, 27):
             mask_s = (d_s[:, :, 2] == part_id)
             mask_t = (d_t[:, :, 2] == part_id)

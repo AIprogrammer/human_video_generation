@@ -29,10 +29,10 @@ def get_norm_layer(norm_type='instance'):
     return norm_layer
 
 def define_G(input_nc, output_nc, loadSize, batchSize, ngf, netG, n_downsample_global=3, n_blocks_global=9, n_local_enhancers=1,
-             n_blocks_local=3, norm='instance', gpu_ids=[]):
+             n_blocks_local=3, norm='instance', gpu_ids=[], grid_padding = 'reflection'):
     norm_layer = get_norm_layer(norm_type=norm)
     if netG == 'global':
-        netG = GlobalGenerator(input_nc, output_nc, loadSize, batchSize, ngf, n_downsample_global, n_blocks_global, norm_layer)
+        netG = GlobalGenerator(input_nc, output_nc, loadSize, batchSize, ngf, n_downsample_global, n_blocks_global, norm_layer,grid_padding = grid_padding)
     elif netG == 'local':
         netG = LocalEnhancer(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global,
                                   n_local_enhancers, n_blocks_local, norm_layer)
@@ -130,19 +130,20 @@ class VGGLoss(nn.Module):
         return loss
 
 class WarpLoss(nn.Module):
-    def __init__(self, gpu_ids):
+    def __init__(self, gpu_ids, padding_mode):
         super(WarpLoss, self).__init__()
         self.vgg = Vgg19().cuda()
         self.criterion = nn.L1Loss()
         self.weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
+        self.padding_mode = padding_mode
 
     def forward(self, grid_source, grid_prev, source, previous, real):
         size = list(grid_source.shape)[1:3]
         source = interpolate(source, size, mode='bilinear')
         previous = interpolate(previous,  size,  mode='bilinear')
         real = interpolate(real, size, mode='bilinear')
-        warped_source = grid_sample(source, grid_source, padding_mode='reflection')
-        warped_previous = grid_sample(previous, grid_prev, padding_mode='reflection')
+        warped_source = grid_sample(source, grid_source, padding_mode=self.padding_mode)
+        warped_previous = grid_sample(previous, grid_prev, padding_mode=self.padding_mode)
         x1_vgg, x2_vgg, y_vgg = self.vgg(warped_source), self.vgg(warped_previous), self.vgg(real)
         loss = 0
         for i in range(len(x1_vgg)):
@@ -210,12 +211,13 @@ class LocalEnhancer(nn.Module):
 
 class GlobalGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, loadSize, batchSize, ngf=64, n_downsampling=3, n_blocks=9, norm_layer=nn.BatchNorm2d,
-                 padding_type='reflect'):
+                 padding_type='reflect', grid_padding = 'reflection'):
         assert(n_blocks >= 0)
         super(GlobalGenerator, self).__init__()
         activation = nn.ReLU(True)
         self.loadSize = loadSize
         self.batchSize = batchSize
+        self.grid_padding = grid_padding
         print "INPUT NUMBER OF CHANNELS", input_nc
 
         model_downsample = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
@@ -268,7 +270,7 @@ class GlobalGenerator(nn.Module):
     def warp_module(self, frame, grid, dp_target):
         ### grid in the relative coordinates
         rel_coord_grid = grid - util.make_coordinate_grid((self.loadSize, self.loadSize), type(grid), self.batchSize).cuda()
-        warped_source = grid_sample(frame, grid.permute(0, 2, 3, 1), padding_mode='reflection')
+        warped_source = grid_sample(frame, grid.permute(0, 2, 3, 1), padding_mode = self.grid_padding )
         grid_set = torch.cat([dp_target, warped_source, rel_coord_grid], dim = 1)
         grid_set_output = self.model_downsample_grid_set(grid_set)
         grid_output = interpolate(grid, size= (64, 64), mode='bilinear')
@@ -282,12 +284,12 @@ class GlobalGenerator(nn.Module):
         ## previous frame preprocess
         prev_frame_output = self.model_downsample_previous(prev_frame)
         grid_for_prev = self.warp_module(prev_frame, grid_prev, dp_target)
-        warped_prev = grid_sample(prev_frame_output, grid_for_prev, padding_mode='reflection')
+        warped_prev = grid_sample(prev_frame_output, grid_for_prev, padding_mode= self.grid_padding )
 
         ## source frame warping
         source_frame_output = self.model_downsample_previous(source_frame)
         grid_for_source = self.warp_module(source_frame, grid_source, dp_target)
-        warped_source = grid_sample(source_frame_output, grid_for_source, padding_mode='reflection')
+        warped_source = grid_sample(source_frame_output, grid_for_source, padding_mode= self.grid_padding )
 
         output = torch.cat((model_downsample_output, warped_source, warped_prev), 1)
         output = self.down_pair(output)

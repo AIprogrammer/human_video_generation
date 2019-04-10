@@ -23,12 +23,12 @@ class Videos_Runtime_Warp_Dataset(BaseDataset):
             target_folders = (make_dataset(os.path.join(current_path, "target")))
             dp_target_folders.sort(key=natural_keys)
             target_folders.sort(key=natural_keys)
-            for j in range(0, len(target_folders)-1):
+            for j in range(0, len(target_folders)-2):
                 num = range(0,j) + range(j+1, len(target_folders))
                 source_index = random.choice(num)
                 self.input_paths.append({'dp_target': [dp_target_folders[j]], 'target': [target_folders[j]],
                 'source': target_folders[source_index], 'dp_source': dp_target_folders[source_index]})
-                for k in range(1, 2):
+                for k in range(1, 3):
                     self.input_paths[-1]['dp_target'].append(dp_target_folders[j+k])
                     self.input_paths[-1]['target'].append(target_folders[j+k])
 
@@ -101,6 +101,34 @@ class Videos_Runtime_Warp_Dataset(BaseDataset):
         result_dict['source_frame'].append(img_source_tensor)
         result_dict['grid'].append(grid)
         result_dict['grid_source'].append(grid_source)
+
+
+
+        #### SECOND FRAME OUT OF TWO
+
+        img_3 = Image.open(current_paths['target'][2])
+        img_tensor_3 = transform_img(img_3.convert('RGB'))
+        result_dict['target'].append(img_tensor_3)
+
+        img_3 = Image.open(current_paths['dp_target'][2])
+        img_target_dp_3 = img_3.convert('RGB')
+        np_target_dp_3 = np.array(img_target_dp_3)
+        img_tensor_3 = transform_img(img_target_dp_3)
+        result_dict['input'].append(img_tensor_3)
+
+        grid_source= self.dp.get_grid_warp(np_source_dp, np_target_dp_3)
+        grid_source = torch.from_numpy(grid_source).float()
+        grid_source = grid_source.permute(2,0,1)
+
+        grid = self.dp.get_grid_warp(np_target_dp_2, np_target_dp_3)
+        grid = torch.from_numpy(grid).float()
+        grid = grid.permute(2,0,1)
+
+
+        result_dict['source_frame'].append(img_source_tensor)
+        result_dict['grid'].append(grid)
+        result_dict['grid_source'].append(grid_source)
+
 
 
         for key, value in result_dict.iteritems():
