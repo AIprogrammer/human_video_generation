@@ -9,6 +9,9 @@ from PIL import Image
 import os
 import re
 
+import numpy as np
+import scipy.spatial
+
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
     '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP', '.tiff'
@@ -42,6 +45,73 @@ def make_dataset(dir):
 
 def default_loader(path):
     return Image.open(path).convert('RGB')
+
+
+class DensePose:
+    def __init__(self, spatial_size, oob_ocluded=False, naive_warp = False):
+        self.spatial_size = spatial_size
+        self.oob_ocluded = oob_ocluded
+        self.coordinate_grid = self.make_coordinate_grid(self.spatial_size)
+        self.naive_warp = naive_warp
+
+    def make_coordinate_grid(self, spatial_size):
+        h, w = self.spatial_size
+        x = np.arange(w)
+        y = np.arange(h)
+
+        x = (2.0 * (x / (w - 1.0)) - 1.0)
+        y = (2.0 * (y / (h - 1.0)) - 1.0)
+
+        xx, yy = np.meshgrid(x, y)
+
+        meshed = np.concatenate([xx[:, :, np.newaxis], yy[:, :, np.newaxis]], 2)
+
+        return meshed
+
+    def nn_search(self, reference, query):
+        tree = scipy.spatial.cKDTree(reference)
+        _, index = tree.query(query)
+        return index
+
+    def distance(self,reference, query):
+        reference = np.expand_dims(reference, axis =1)
+        query = np.expand_dims(query, axis =0)
+        dm = ((reference - query) ** 2).sum(-1)
+        return dm
+
+
+    def get_grid_warp(self, d_s, d_t):
+        """
+        d_s - source dence pose [h,w,3] (u, v, part_id)
+        """
+        warp_grid = self.coordinate_grid.copy()
+        if self.oob_ocluded:
+            warp_grid[d_s[:, :, 2] != 0] = (-1, -1)
+
+        for part_id in range(1, 27):
+            mask_s = (d_s[:, :, 2] == part_id)
+            mask_t = (d_t[:, :, 2] == part_id)
+            uv_s = d_s[:, :, 1:][mask_s]
+            uv_t = d_t[:, :, 1:][mask_t]
+            uv_s = uv_s.astype(float)
+            uv_t = uv_t.astype(float)
+            if uv_t.shape[0] == 0:
+                continue
+            if uv_s.shape[0] == 0:
+                if self.oob_ocluded:
+                    warp_grid[mask_t] = (-1, -1)
+                    continue
+            grid_s = self.coordinate_grid[mask_s]
+
+            #Finding nearest neighbours
+            if self.naive_warp:
+                dm = self.distance(uv_s, uv_t)
+                coords = grid_s[dm.argmin(axis=0)]
+            else:
+                index = self.nn_search(uv_s, uv_t)
+                coords = grid_s[index]
+            warp_grid[mask_t] = coords
+        return warp_grid
 
 
 class ImageFolder(data.Dataset):

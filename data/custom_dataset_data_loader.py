@@ -6,10 +6,14 @@ def CreateDataset(opt):
     dataset = None
     from data.videos_dataset import Videos_Dataset
     from data.video_test_dataset import  Videos_Test_Dataset
+    from data.videos_runtime_warp_dataset import Videos_Runtime_Warp_Dataset
     if opt.isTrain:
-        dataset = Videos_Dataset()
+        if opt.runtime_warp:
+            dataset = Videos_Runtime_Warp_Dataset()
+        else:
+            dataset = Videos_Dataset()
     else:
-        dataset = Videos_Test_Dataset()
+            dataset = Videos_Test_Dataset()
 
     print("dataset [%s] was created" % (dataset.name()))
     dataset.initialize(opt)

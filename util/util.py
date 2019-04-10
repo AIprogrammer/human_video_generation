@@ -17,9 +17,9 @@ def tensor2im(image_tensor, imtype=np.uint8, normalize=True):
     if normalize:
         image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0
     else:
-        image_numpy = np.transpose(image_numpy, (1, 2, 0)) * 255.0      
+        image_numpy = np.transpose(image_numpy, (1, 2, 0)) * 255.0
     image_numpy = np.clip(image_numpy, 0, 255)
-    if image_numpy.shape[2] == 1 or image_numpy.shape[2] > 3:        
+    if image_numpy.shape[2] == 1 or image_numpy.shape[2] > 3:
         image_numpy = image_numpy[:,:,0]
     return image_numpy.astype(imtype)
 
@@ -31,8 +31,8 @@ def make_coordinate_grid(spatial_size, type, batchsize):
     x = torch.arange(w).type(type)
     y = torch.arange(h).type(type)
 
-    x = (2 * (x / (w - 1)) - 1)
-    y = (2 * (y / (h - 1)) - 1)
+    x = (2.0 * (x / (w - 1.0)) - 1.0)
+    y = (2.0 * (y / (h - 1.0)) - 1.0)
 
     yy = y.view(-1, 1).repeat(1, w)
     xx = x.view(1, -1).repeat(h, 1)
@@ -47,7 +47,7 @@ def make_coordinate_grid(spatial_size, type, batchsize):
 def tensor2label(label_tensor, n_label, imtype=np.uint8):
     if n_label == 0:
         return tensor2im(label_tensor, imtype)
-    label_tensor = label_tensor.cpu().float()    
+    label_tensor = label_tensor.cpu().float()
     if label_tensor.size()[0] > 1:
         label_tensor = label_tensor.max(0, keepdim=True)[1]
     label_tensor = Colorize(n_label)(label_tensor)
@@ -84,7 +84,7 @@ def labelcolormap(N):
                      (128, 64,128), (244, 35,232), (250,170,160), (230,150,140), ( 70, 70, 70), (102,102,156), (190,153,153),
                      (180,165,180), (150,100,100), (150,120, 90), (153,153,153), (153,153,153), (250,170, 30), (220,220,  0),
                      (107,142, 35), (152,251,152), ( 70,130,180), (220, 20, 60), (255,  0,  0), (  0,  0,142), (  0,  0, 70),
-                     (  0, 60,100), (  0,  0, 90), (  0,  0,110), (  0, 80,100), (  0,  0,230), (119, 11, 32), (  0,  0,142)], 
+                     (  0, 60,100), (  0,  0, 90), (  0,  0,110), (  0, 80,100), (  0,  0,230), (119, 11, 32), (  0,  0,142)],
                      dtype=np.uint8)
     else:
         cmap = np.zeros((N, 3), dtype=np.uint8)

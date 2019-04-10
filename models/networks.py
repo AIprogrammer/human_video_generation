@@ -279,9 +279,6 @@ class GlobalGenerator(nn.Module):
     def forward(self, dp_target, source_frame, prev_frame, grid_source, grid_prev):
         model_downsample_output = self.model_downsample(dp_target)
 
-        print prev_frame.size()
-        print dp_target.size()
-
         ## previous frame preprocess
         prev_frame_output = self.model_downsample_previous(prev_frame)
         grid_for_prev = self.warp_module(prev_frame, grid_prev, dp_target)
