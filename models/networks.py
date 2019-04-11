@@ -29,10 +29,11 @@ def get_norm_layer(norm_type='instance'):
     return norm_layer
 
 def define_G(input_nc, output_nc, loadSize, batchSize, ngf, netG, n_downsample_global=3, n_blocks_global=9, n_local_enhancers=1,
-             n_blocks_local=3, norm='instance', gpu_ids=[], grid_padding = 'reflection'):
+             n_blocks_local=3, norm='instance', gpu_ids=[], grid_padding = 'reflection', no_coarse_warp= False, no_refining_warp = False):
     norm_layer = get_norm_layer(norm_type=norm)
     if netG == 'global':
-        netG = GlobalGenerator(input_nc, output_nc, loadSize, batchSize, ngf, n_downsample_global, n_blocks_global, norm_layer,grid_padding = grid_padding)
+        netG = GlobalGenerator(input_nc, output_nc, loadSize, batchSize, ngf, n_downsample_global, n_blocks_global,
+                                norm_layer, grid_padding = grid_padding, no_coarse_warp =  no_coarse_warp, no_refining_warp = no_refining_warp)
     elif netG == 'local':
         netG = LocalEnhancer(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global,
                                   n_local_enhancers, n_blocks_local, norm_layer)
@@ -211,13 +212,15 @@ class LocalEnhancer(nn.Module):
 
 class GlobalGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, loadSize, batchSize, ngf=64, n_downsampling=3, n_blocks=9, norm_layer=nn.BatchNorm2d,
-                 padding_type='reflect', grid_padding = 'reflection'):
+                 padding_type='reflect', grid_padding = 'reflection', no_coarse_warp = False, no_refining_warp = False):
         assert(n_blocks >= 0)
         super(GlobalGenerator, self).__init__()
         activation = nn.ReLU(True)
         self.loadSize = loadSize
         self.batchSize = batchSize
         self.grid_padding = grid_padding
+        self.no_coarse_warp = no_coarse_warp
+        self.no_refining_warp = no_refining_warp
         print "INPUT NUMBER OF CHANNELS", input_nc
 
         model_downsample = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
@@ -268,13 +271,16 @@ class GlobalGenerator(nn.Module):
         self.model = nn.Sequential(*model)
 
     def warp_module(self, frame, grid, dp_target):
-        ### grid in the relative coordinates
-        rel_coord_grid = grid - util.make_coordinate_grid((self.loadSize, self.loadSize), type(grid), self.batchSize).cuda()
-        warped_source = grid_sample(frame, grid.permute(0, 2, 3, 1), padding_mode = self.grid_padding )
-        grid_set = torch.cat([dp_target, warped_source, rel_coord_grid], dim = 1)
-        grid_set_output = self.model_downsample_grid_set(grid_set)
+        ### grid in the relative coordinates'
         grid_output = interpolate(grid, size= (64, 64), mode='bilinear')
-        grid_output_global = (grid_set_output + grid_output).permute(0, 2, 3, 1)
+        if not self.no_refining_warp:
+            rel_coord_grid = grid - util.make_coordinate_grid((self.loadSize, self.loadSize), type(grid), self.batchSize).cuda()
+            warped_source = grid_sample(frame, grid.permute(0, 2, 3, 1), padding_mode = self.grid_padding )
+            grid_set = torch.cat([dp_target, warped_source, rel_coord_grid], dim = 1)
+            grid_set_output = self.model_downsample_grid_set(grid_set)
+            grid_output_global = (grid_set_output + grid_output).permute(0, 2, 3, 1)
+        else:
+            grid_output_global = grid_output.permute(0, 2, 3, 1)
         return grid_output_global
 
 
@@ -283,13 +289,19 @@ class GlobalGenerator(nn.Module):
 
         ## previous frame preprocess
         prev_frame_output = self.model_downsample_previous(prev_frame)
-        grid_for_prev = self.warp_module(prev_frame, grid_prev, dp_target)
-        warped_prev = grid_sample(prev_frame_output, grid_for_prev, padding_mode= self.grid_padding )
+        if not self.no_coarse_warp:
+            grid_for_prev = self.warp_module(prev_frame, grid_prev, dp_target)
+            warped_prev = grid_sample(prev_frame_output, grid_for_prev, padding_mode= self.grid_padding )
+        else:
+            warped_prev = prev_frame_output
 
         ## source frame warping
         source_frame_output = self.model_downsample_previous(source_frame)
-        grid_for_source = self.warp_module(source_frame, grid_source, dp_target)
-        warped_source = grid_sample(source_frame_output, grid_for_source, padding_mode= self.grid_padding )
+        if not self.no_coarse_warp:
+            grid_for_source = self.warp_module(source_frame, grid_source, dp_target)
+            warped_source = grid_sample(source_frame_output, grid_for_source, padding_mode= self.grid_padding )
+        else:
+            warped_source = source_frame_output
 
         output = torch.cat((model_downsample_output, warped_source, warped_prev), 1)
         output = self.down_pair(output)

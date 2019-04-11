@@ -33,7 +33,8 @@ class Pix2PixHDModel(BaseModel):
 
         self.netG = networks.define_G(netG_input_nc, opt.output_nc,opt.loadSize, opt.batchSize, opt.ngf, opt.netG,
                                       opt.n_downsample_global, opt.n_blocks_global, opt.n_local_enhancers,
-                                      opt.n_blocks_local, opt.norm, gpu_ids=self.gpu_ids, grid_padding = opt.grid_padding)
+                                      opt.n_blocks_local, opt.norm, gpu_ids=self.gpu_ids, grid_padding = opt.grid_padding,
+                                      no_coarse_warp = opt.no_coarse_warp, no_refining_warp = opt.no_refining_warp)
 
         # Discriminator network
         if self.isTrain:
