@@ -87,11 +87,11 @@ class DensePose:
         warp_grid = self.coordinate_grid.copy()
         if self.oob_ocluded:
             warp_grid[d_s[:, :, 2] != 0.0] = (-1.0, -1.0)
-        for part_id in range(1, 27):
+        for part_id in range(1, 25):
             mask_s = (d_s[:, :, 2] == part_id)
             mask_t = (d_t[:, :, 2] == part_id)
-            uv_s = d_s[:, :, 1:][mask_s]
-            uv_t = d_t[:, :, 1:][mask_t]
+            uv_s = d_s[:, :, :2][mask_s]
+            uv_t = d_t[:, :, :2][mask_t]
             uv_s = uv_s.astype(float)
             uv_t = uv_t.astype(float)
             if uv_t.shape[0] == 0:
