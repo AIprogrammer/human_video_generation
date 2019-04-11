@@ -69,7 +69,7 @@ class Pix2PixHDModel(BaseModel):
             self.old_lr = opt.lr
 
             # define loss functions
-            self.loss_filter = self.init_loss_filter(not opt.no_ganFeat_loss, not opt.no_vgg_loss, not opt.no_warp_loss)
+            self.loss_filter = self.init_loss_filter(not opt.no_ganFeat_loss, not opt.no_vgg_loss, not (opt.no_warp_loss or opt.no_coarse_warp or opt.no_refining_warp))
 
             self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan, tensor=self.Tensor)
             self.criterionFeat = torch.nn.L1Loss()
@@ -171,8 +171,10 @@ class Pix2PixHDModel(BaseModel):
         if not self.opt.no_vgg_loss:
             loss_G_VGG = self.criterionVGG(fake_image, real_image) * self.opt.lambda_feat
 
-
-        loss_G_Warp = self.criterionWarp( grid_for_source, grid_for_prev, source_frame, prev_frame, real_image)
+        if self.opt.no_coarse_warp or self.opt.no_refining_warp:
+            loss_G_Warp = None
+        else:
+            loss_G_Warp = self.criterionWarp( grid_for_source, grid_for_prev, source_frame, prev_frame, real_image)
 
         # Only return the fake_B image if necessary to save BW
         return [ self.loss_filter( loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_G_Warp, loss_D_real, loss_D_fake ), fake_image, grid_for_source, grid_for_prev ]

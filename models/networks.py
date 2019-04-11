@@ -305,7 +305,7 @@ class GlobalGenerator(nn.Module):
 
         output = torch.cat((model_downsample_output, warped_source, warped_prev), 1)
         output = self.down_pair(output)
-        return self.model(output), grid_for_source, grid_for_prev
+        return self.model(output), grid_for_source if not self.no_coarse_warp else None, grid_for_prev if not self.no_coarse_warp else None
 
 # Define a resnet block
 class ResnetBlock(nn.Module):

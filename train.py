@@ -99,10 +99,13 @@ for epoch in range(start_epoch, opt.niter + 1):
         ### display output images
         if save_fake:
             img = (data['source_frame'][0]).cuda()
-            grid = grid_for_source.permute(0, 3, 1, 2).detach()
-            grid = functional.interpolate(grid, (256,256), mode = 'bilinear' )
-            warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode=opt.grid_padding)
             warped_source = grid_sample(data['source_frame'][0], data['grid_source'][0].permute(0, 2, 3, 1), padding_mode=opt.grid_padding)
+            if not (opt.no_coarse_warp or opt.no_refining_warp):
+                grid = grid_for_source.permute(0, 3, 1, 2).detach()
+                grid = functional.interpolate(grid, (256,256), mode = 'bilinear' )
+                warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode=opt.grid_padding)
+            else:
+                warp = warped_source
 
             visuals = OrderedDict([('synthesized_video', util.tensor2im(generated.data[0])),
                                     ('source_video', util.tensor2im(data['source_frame'][0][0])),
@@ -148,10 +151,13 @@ for epoch in range(start_epoch, opt.niter + 1):
             ### display output images
             if save_fake:
                 img = (data['source_frame'][0]).cuda()
-                grid = grid_for_source.permute(0, 3, 1, 2).detach()
-                grid = functional.interpolate(grid, (256,256),mode = 'bilinear' )
-                warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode=opt.grid_padding)
                 warped_source = grid_sample(data['source_frame'][0], data['grid_source'][f].permute(0, 2, 3, 1), padding_mode=opt.grid_padding)
+                if not (opt.no_coarse_warp or opt.no_refining_warp):
+                    grid = grid_for_source.permute(0, 3, 1, 2).detach()
+                    grid = functional.interpolate(grid, (256,256),mode = 'bilinear' )
+                    warp = functional.grid_sample(img, grid.permute(0, 2, 3, 1), padding_mode=opt.grid_padding)
+                else:
+                    warp = warped_source
                 visuals = OrderedDict([('synthesized_video_%d'%f, util.tensor2im(generated.data[0])),
                                        ('real_video_%d'%f, util.tensor2im(data['target'][f][0])),
                                        ('warped_source_%d'%f, util.tensor2im(warped_source.data[0])),
