@@ -41,7 +41,7 @@ class Videos_Test_Dataset(BaseDataset):
                                          'of_x_source': of_x_source,
                                          'of_y_source': of_y_source,
                                          'path': folder})
-        self.dataset_size = len(sample_folders*opt.source_num)
+        self.dataset_size = len(sample_folders)
 
     def __getitem__(self, index):
         dp_target_video = []
