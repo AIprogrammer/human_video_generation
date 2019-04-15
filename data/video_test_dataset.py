@@ -27,7 +27,7 @@ class Videos_Test_Dataset(BaseDataset):
             of_x.sort(key=natural_keys)
             of_y.sort(key=natural_keys)
 
-            for i in range(0, opt.source_num):
+            for i in range(0, 1):
                 of_x_source = (make_dataset(os.path.join(current_path, "of_x_%d"%i)))
                 of_y_source = (make_dataset(os.path.join(current_path, "of_y_%d" % i)))
                 #texture.sort(key=natural_keys)
@@ -40,7 +40,7 @@ class Videos_Test_Dataset(BaseDataset):
                                          'of_y': of_y,
                                          'of_x_source': of_x_source,
                                          'of_y_source': of_y_source,
-                                         'path': folder+"_" + str(i)})
+                                         'path': folder})
         self.dataset_size = len(sample_folders*opt.source_num)
 
     def __getitem__(self, index):

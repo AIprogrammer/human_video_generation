@@ -112,26 +112,26 @@ class Visualizer():
             log_file.write('%s\n' % message)
 
     # save image to the disk
-    def save_images(self, webpage, visuals, image_path):
+    def save_images(self, webpage, image_numpy, image_path, name):
         image_dir = webpage.get_image_dir()
         print image_path
-        short_path = ntpath.basename(image_path)
-        name = os.path.splitext(short_path)[0]
-        name = short_path
 
-        print short_path
+        new_image_dir  = os.path.join(image_dir, image_path)
+
+        if not os.path.exists(new_image_dir ):
+            os.makedirs(new_image_dir)
+
         webpage.add_header(name)
         ims = []
         txts = []
         links = []
 
-        for label, image_numpy in visuals.items():
-            image_name = '%s.jpg' % (name)
-            save_path = os.path.join(image_dir, image_name)
-            print save_path
-            util.save_image(image_numpy, save_path)
+        image_name = '%s.png' % name
+        save_path = os.path.join(new_image_dir, image_name)
+        print save_path
+        util.save_image(image_numpy, save_path)
 
-            ims.append(image_name)
-            txts.append(label)
-            links.append(image_name)
-        webpage.add_images(ims, txts, links, width=self.win_size)
+        #ims.append(image_name)
+        #txts.append(label)
+        #links.append(image_name)
+        #webpage.add_images(ims, txts, links, width=self.win_size)
