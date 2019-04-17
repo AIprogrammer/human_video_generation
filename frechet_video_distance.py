@@ -78,7 +78,7 @@ def create_id3_embedding(videos):
     ValueError: when a provided embedding_layer is not supported.
   """
 
-  batch_size = 16
+  batch_size = 8
   module_spec = "https://tfhub.dev/deepmind/i3d-kinetics-400/1"
 
 

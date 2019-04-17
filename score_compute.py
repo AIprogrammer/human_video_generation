@@ -95,75 +95,6 @@ def read_video(name, image_shape, length = 0, fvd = False):
     return video_array
 
 
-def load_generated_images_from_one_img_fvd(images_folder_fake, images_folder_real, length):
-    target_images = []
-    generated_images = []
-
-    sample_folders = os.listdir(images_folder_real)
-    sample_folders.sort(key=natural_keys)
-    new_len  = (len(sample_folders) // 16) * 16
-    sample_folders = sample_folders[:new_len]
-
-    for folder in sample_folders:
-        current_path_real = os.path.join(images_folder_real, folder + "/target")
-        real_images = (make_dataset(current_path_real))
-        real_images.sort(key=natural_keys)
-
-        fake_video = read_video(name, (256,256,3), length)
-        for real_img_name, fake_frame in zip(real_images, fake_video):
-            #print (real_img_name)
-            generated_images.append(fake_frame)
-
-            img = Image.open(real_img_name)
-            img_tensor = img.convert('RGB')
-            target_images.append(np.array(img_tensor))
-
-    return  target_images, generated_images
-
-
-
-def load_generated_images_fvd(images_folder_fake, images_folder_real, length):
-    target_images = []
-    generated_images = []
-
-    sample_folders = os.listdir(images_folder_real)
-    sample_folders.sort(key=natural_keys)
-    new_len  = 16 #(len(sample_folders) // 16) * 16
-    print (new_len)
-    sample_folders = sample_folders[:new_len]
-    for folder in sample_folders:
-        current_path_real = os.path.join(images_folder_real, folder + "/target")
-        current_path_fake = os.path.join(images_folder_fake,  folder)
-        real_images = (make_dataset(current_path_real))
-        fake_images = (make_dataset(current_path_fake))
-        real_images.sort(key=natural_keys)
-        fake_images.sort(key=natural_keys)
-        real_video = []
-        fake_video = []
-
-        if not length == 0:
-            real_images = real_images[:length]
-            fake_images  = fake_images[:length]
-
-        for real_img_name, fake_img_name in zip(real_images, fake_images):
-
-            img_fake = Image.open(fake_img_name)
-            img_tensor_fake = img_fake.convert('RGB')
-            fake_video.append(np.array(img_tensor_fake))
-
-            img = Image.open(real_img_name)
-            img_tensor = img.convert('RGB')
-            real_video.append(np.array(img_tensor))
-
-        generated_images.append(np.stack(fake_video, axis=0))
-        target_images.append(np.stack(real_video, axis=0))
-    target_images = np.stack(target_images, axis = 0)
-    generated_images = np.stack(generated_images, axis = 0)
-    return  target_images, generated_images
-
-
-
-
 def load_generated_images(images_folder_fake, images_folder_real, length = 0):
     target_images = []
     generated_images = []
@@ -202,7 +133,7 @@ def load_generated_images_from_one_img(images_folder_fake, images_folder_real, l
     sample_folders = os.listdir(images_folder_real)
     sample_folders.sort(key=natural_keys)
 
-   
+
     fake_image_path = (make_dataset(images_folder_fake))
 
     for folder, fake_path in zip(sample_folders, fake_image_path):
@@ -212,12 +143,12 @@ def load_generated_images_from_one_img(images_folder_fake, images_folder_real, l
         fake_video = read_video(fake_path, (256, 256, 3), length)
         if not length == 0:
             real_images = real_images[:length]
-	for real_img_name, fake_frame in zip(real_images, fake_video):
-            generated_images.append(fake_frame)
+    	for real_img_name, fake_frame in zip(real_images, fake_video):
+                generated_images.append(fake_frame)
 
-            img = Image.open(real_img_name)
-            img_tensor = img.convert('RGB')
-            target_images.append(np.array(img_tensor))
+                img = Image.open(real_img_name)
+                img_tensor = img.convert('RGB')
+                target_images.append(np.array(img_tensor))
 
     return  target_images, generated_images
 
@@ -254,15 +185,6 @@ def test():
     norm_score = l1_score(generated_images, target_images)
     print ("L1 score %s" % norm_score)
 
-   # if args.load_generated_images:
-   #     print ("Loading images to compute fvd score...")
-   #     target_images, generated_images = load_generated_images_fvd(args.images_folder_fake, args.images_folder_real, args.length_of_videos_fvd)
-
-   # print ("Compute FVD score...")
-  #  norm_score = fvd(generated_images, target_images)
-
-   # print ("SSIM score = %s, l1 score = %s" %
-   #        (structured_score, norm_score))
 
 
 

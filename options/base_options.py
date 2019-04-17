@@ -24,6 +24,7 @@ class BaseOptions():
         self.parser.add_argument('--grid_padding', type=str, default='reflection', help='padding mode for the grid_sample [reflection|border|zeros]')
         self.parser.add_argument('--no_coarse_warp', action='store_true', default=False, help='if specified then dont do basic coarse warp')
         self.parser.add_argument('--no_refining_warp', action='store_true', default=False, help='if specified then dont do refining warp module')
+        self.parser.add_argument('--prev_frame_num', type=int, default=2, help='number of previously generated frames used during training')
 
 
         # input/output sizes

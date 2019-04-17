@@ -60,9 +60,14 @@ for i, data in enumerate(dataset):
 
 
         for i in range(1, data["dp_target"].shape[0]):
-            generated = model.inference(data['dp_target'][i],
-                                            data['source_frame'], generated,
-                                            data['grid_source'][i], data['grid'][i-1])
+            if opt.prev_frame_num  == 0:
+                generated = model.inference(data['dp_target'][i],
+                                                data['source_frame'], data['source_frame'],
+                                                data['grid_source'][i], data['grid_source'][i])
+            else:
+                generated = model.inference(data['dp_target'][i],
+                                                data['source_frame'], generated,
+                                                data['grid_source'][i], data['grid'][i-1])
 
             img_path = data['path'][0]
             frame_number = str(i)
