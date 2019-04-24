@@ -25,7 +25,8 @@ class Video_Test_Dataset_Runtime(BaseDataset):
                 for row in reader: # read a row as {column1: value1, column2: value2,...}
                     for (k,v) in row.items(): # go over each column name and value
                         columns[k].append(v) # append the value into the appropriate list
-                                             # based on column name k
+                                         # based on column name k
+            print len(columns["source"])
             for folder_source, folder_driving  in zip(columns["source"] , columns["driving"]):
                 current_path_source = os.path.join(opt.dataroot, folder_source.split(".mp4")[0])
                 current_path_driving = os.path.join(opt.dataroot, folder_driving.split(".mp4")[0])
@@ -38,7 +39,7 @@ class Video_Test_Dataset_Runtime(BaseDataset):
                 self.input_paths.append({'dp_target': dp_target_folders_driving,
                                          'dp_source': dp_target_folders_source[0],
                                          'source': target_folders_source[0],
-                                         'path': folder_source})
+                                         'path': folder_source+folder_driving})
             self.dataset_size = len(columns["source"])
         else:
             sample_folders = os.listdir(opt.dataroot)
