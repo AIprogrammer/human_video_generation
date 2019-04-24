@@ -5,6 +5,9 @@ from data.image_folder import make_dataset, atoi, natural_keys, DensePose
 from PIL import Image
 import numpy as np
 
+import csv
+from collections import defaultdict
+
 
 class Video_Test_Dataset_Runtime(BaseDataset):
     def initialize(self, opt):
@@ -13,19 +16,44 @@ class Video_Test_Dataset_Runtime(BaseDataset):
         self.input_paths = []
         self.dp = DensePose((opt.loadSize, opt.loadSize), oob_ocluded=True, naive_warp = opt.naive_warp)
 
-        sample_folders = os.listdir(opt.dataroot)
-        sample_folders.sort(key=natural_keys)
-        for folder in sample_folders:
-            current_path = os.path.join(opt.dataroot, folder)
-            dp_target_folders = (make_dataset(os.path.join(current_path, "dp_target")))
-            target_folders = (make_dataset(os.path.join(current_path, "target")))
-            dp_target_folders.sort(key=natural_keys)
-            target_folders.sort(key=natural_keys)
-            self.input_paths.append({'dp_target': dp_target_folders,
-                                     'dp_source': dp_target_folders[0],
-                                     'source': target_folders[0],
-                                     'path': folder})
-        self.dataset_size = len(sample_folders)
+        if opt.transfer:
+
+            columns = defaultdict(list) # each value in each column is appended to a list
+
+            with open(opt.transfer_file) as f:
+                reader = csv.DictReader(f) # read rows into a dictionary format
+                for row in reader: # read a row as {column1: value1, column2: value2,...}
+                    for (k,v) in row.items(): # go over each column name and value
+                        columns[k].append(v) # append the value into the appropriate list
+                                             # based on column name k
+            for folder_source, folder_driving  in zip(columns["source"] , columns["driving"]):
+                current_path_source = os.path.join(opt.dataroot, folder_source.split(".mp4")[0])
+                current_path_driving = os.path.join(opt.dataroot, folder_driving.split(".mp4")[0])
+                dp_target_folders_source = (make_dataset(os.path.join(current_path_source, "dp_target")))
+                dp_target_folders_driving = (make_dataset(os.path.join(current_path_driving, "dp_target")))
+                target_folders_source = (make_dataset(os.path.join(current_path_source, "target")))
+                dp_target_folders_source.sort(key=natural_keys)
+                target_folders_source.sort(key=natural_keys)
+                dp_target_folders_driving.sort(key=natural_keys)
+                self.input_paths.append({'dp_target': dp_target_folders_driving,
+                                         'dp_source': dp_target_folders_source[0],
+                                         'source': target_folders_source[0],
+                                         'path': folder_source})
+            self.dataset_size = len(columns["source"])
+        else:
+            sample_folders = os.listdir(opt.dataroot)
+            sample_folders.sort(key=natural_keys)
+            for folder in sample_folders:
+                current_path = os.path.join(opt.dataroot, folder)
+                dp_target_folders = (make_dataset(os.path.join(current_path, "dp_target")))
+                target_folders = (make_dataset(os.path.join(current_path, "target")))
+                dp_target_folders.sort(key=natural_keys)
+                target_folders.sort(key=natural_keys)
+                self.input_paths.append({'dp_target': dp_target_folders,
+                                         'dp_source': dp_target_folders[0],
+                                         'source': target_folders[0],
+                                         'path': folder})
+            self.dataset_size = len(sample_folders)
 
     def __getitem__(self, index):
         dp_target_video = []

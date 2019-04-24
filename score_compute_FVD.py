@@ -24,31 +24,39 @@ import tensorflow as tf
 from frechet_video_distance import calculate_fvd, create_id3_embedding, preprocess
 
 
-def fvd(generated_images, reference_images):
-  fvd_list = []
+def fvd(generated_embd, reference_embd):
   with tf.Graph().as_default():
-    chunk_size= 8
-    for i in range(0, generated_images.shape[0], chunk_size):
-        generated_images_chunk = generated_images[i:i+chunk_size]
-        reference_images_chunk = reference_images[i:i+chunk_size]
+    generated_embd = tf.convert_to_tensor(generated_embd, dtype=np.float32)
+    reference_embd = tf.convert_to_tensor(reference_embd, dtype=np.float32)
 
-        generated_images_chunk = tf.convert_to_tensor(generated_images_chunk, dtype=np.uint8)
-        print("Converted to tensor generated_images ")
-        reference_images_chunk = tf.convert_to_tensor(reference_images_chunk, dtype=np.uint8)
-        print("Converted to tensor reference images")
+    result = calculate_fvd(generated_embd, reference_embd)
+
+    with tf.Session() as sess:
+      sess.run(tf.global_variables_initializer())
+      sess.run(tf.tables_initializer())
+      print("FVD is: %.2f." % sess.run(result))
 
 
-        result = calculate_fvd(
-            create_id3_embedding(preprocess(generated_images_chunk,
-                                                    (224, 224))),
-            create_id3_embedding(preprocess(reference_images_chunk,
-                                                    (224, 224))))
+def get_embeddings(images):
+  list_of_embeddings = []
+  chunk_size = 8
+  with tf.Graph().as_default():
+    for i in range(0, images.shape[0], chunk_size):
+        print("Number of preproccessed images: %d" %i)
+        images_chunk = images[i:i+chunk_size]
 
+
+        images_chunk = tf.convert_to_tensor(images_chunk, dtype=np.uint8)
+        #images_chunk = tf.expand_dims(images_chunk, 0)
+
+        embedding = create_id3_embedding(preprocess(images_chunk,
+                                                (224, 224)))
         with tf.Session() as sess:
           sess.run(tf.global_variables_initializer())
           sess.run(tf.tables_initializer())
-          fvd_list.append(sess.run(result))
-  return np.mean(fvd_list)
+          list_of_embeddings.append(sess.run(embedding))
+  return list_of_embeddings
+
 
 
 def read_video(name, image_shape, length = 0, fvd = False):
@@ -82,7 +90,9 @@ def load_generated_images_from_one_img_fvd(images_folder_fake, images_folder_rea
     sample_folders.sort(key=natural_keys)
     new_len  = (len(sample_folders) // 8) * 8
 
-    fake_image_path = (make_dataset(images_folder_fake))
+    print (new_len)
+    sample_folders = sample_folders[:new_len]
+    fake_image_path = (make_dataset(images_folder_fake))[:new_len]
 
     for folder, fake_path in zip(sample_folders, fake_image_path):
         current_path_real = os.path.join(images_folder_real, folder + "/target")
@@ -90,20 +100,23 @@ def load_generated_images_from_one_img_fvd(images_folder_fake, images_folder_rea
         real_images.sort(key=natural_keys)
 
         if not length == 0:
-            real_images = real_images[:new_len]
+            real_images = real_images[:length]
 
-        fake_images = read_video(fake_path, (256,256,3), new_len)
+        fake_images = read_video(fake_path, (256,256,3), length)
 
         real_video = []
         fake_video = []
         for real_img_name, fake_frame in zip(real_images, fake_images):
 
-            fake_fideo.append(fake_frame)
+            fake_video.append(fake_frame)
 
             img = Image.open(real_img_name)
             img_tensor = img.convert('RGB')
-            target_images.append(np.array(img_tensor))
-
+            real_video.append(np.array(img_tensor))
+        generated_images.append(np.stack(fake_video, axis=0))
+        target_images.append(np.stack(real_video, axis=0))
+    target_images = np.stack(target_images, axis = 0)
+    generated_images = np.stack(generated_images, axis = 0)
     return  target_images, generated_images
 
 
@@ -163,11 +176,28 @@ def test():
 
     if args.load_generated_images:
         print ("Loading images to compute fvd score...")
-        target_images, generated_images = load_generated_images_fvd(args.images_folder_fake, args.images_folder_real, args.length_of_videos_fvd)
+        if not args.load_from_one_image:
+            target_images, generated_images = load_generated_images_fvd(args.images_folder_fake, args.images_folder_real, args.length_of_videos_fvd)
+        else:
+            target_images, generated_images = load_generated_images_from_one_img_fvd(args.images_folder_fake, args.images_folder_real, args.length_of_videos_fvd)
 
     print ("Compute FVD score...")
-    print("FVD is: %.2f." %  fvd(generated_images, target_images))
 
+
+    embd_target = get_embeddings(target_images)
+    embd_gener = get_embeddings(generated_images)
+
+    fvd(np.concatenate(embd_target, axis=0), np.concatenate(embd_gener, axis=0))
+
+
+    #fake_2 = "./results_2/MonkeyNet-fashion/reconstruction/png"
+    #real_2 = "./datasets/Models_dataset_val"
+    #target_images, generated_images = load_generated_images_from_one_img_fvd(fake_2, real_2, args.length_of_videos_fvd)
+
+    #embd_target = get_embeddings(target_images)
+    #embd_gener = get_embeddings(generated_images)
+
+    #fvd(np.concatenate(embd_target, axis=0), np.concatenate(embd_gener, axis=0))
 
 
 
